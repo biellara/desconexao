@@ -44,7 +44,7 @@
 
 ## 🔹 Etapa 3 — Estrutura de Diretórios
 
-
+```
 olt-dashboard/
 │
 ├── backend/                        # API (FastAPI)
@@ -73,7 +73,7 @@ olt-dashboard/
 │   ├── arquitetura.png             # Diagrama simples
 │
 └── README.md
-
+```
 
 ---
 
