@@ -1,0 +1,14 @@
+/*
+  Este arquivo importa as diretivas base do Tailwind.
+  Ele substitui o conteúdo padrão do index.css.
+  Apague todo o conteúdo que veio com o Vite e substitua por estas 3 linhas.
+*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Adicionamos um fundo sutil para a página inteira */
+body {
+  background-color: #f0f2f5;
+}
+
