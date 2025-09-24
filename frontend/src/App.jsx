@@ -3,9 +3,9 @@ import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 
 // Importando os componentes
-import StatsCard from './components/StatsCard';
-import UploadFile from './components/UploadFile';
-import ClientTable from './components/ClientTable';
+import StatsCard from '../components/StatsCard';
+import UploadFile from '../components/UploadFile';
+import ClientTable from '../components/ClientTable';
 
 // --- CONFIGURAÇÃO ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
