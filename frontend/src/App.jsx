@@ -2,97 +2,113 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 
-// Importando os componentes
-import StatsCard from '../components/StatsCard';
-import UploadFile from '../components/UploadFile';
-import ClientTable from '../components/ClientTable';
+// Componentes (CAMINHO CORRIGIDO)
+import StatsCard from './components/StatsCard.jsx';
+import UploadFile from './components/UploadFile.jsx';
+import ClientTable from './components/ClientTable.jsx';
 
 // --- CONFIGURAÇÃO ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000', // URL do seu backend FastAPI
+  baseURL: 'http://127.0.0.1:8000',
 });
 
 export default function App() {
   const [clients, setClients] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [filtro, setFiltro] = useState('');
 
   // --- FUNÇÕES ---
-
-  // Função para buscar os dados no Supabase
   const fetchClients = async () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('clientes_off')
       .select('*')
-      .order('data_desconexao', { ascending: false }); // Ordena pelos mais recentes
+      .order('data_desconexao', { ascending: false });
 
     if (error) {
       console.error("Erro ao buscar clientes:", error);
-      alert(`Erro ao buscar clientes: ${error.message}`); // Usando alert por simplicidade
+      alert(`Erro ao buscar clientes: ${error.message}`);
     } else {
       setClients(data);
     }
     setIsLoading(false);
   };
   
-  // O 'useEffect' com array vazio roda UMA VEZ quando o componente é montado.
-  // Perfeito para buscar os dados iniciais.
   useEffect(() => {
     fetchClients();
   }, []);
 
-  // Função para lidar com o upload do arquivo
   const handleUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
     setIsUploading(true);
-
     try {
       const response = await apiClient.post('/upload', formData);
-      alert(response.data.message); // Mostra a mensagem de sucesso do backend
-      await fetchClients(); // Atualiza a tabela com os novos dados
+      alert(response.data.message);
+      await fetchClients();
     } catch (error) {
       const errorMessage = error.response?.data?.detail || "Erro desconhecido ao enviar o arquivo.";
       console.error("Erro no upload:", error);
       alert(errorMessage);
     } finally {
-      setIsUploading(false); // Garante que o estado de 'uploading' termine
+      setIsUploading(false);
     }
   };
 
-  // --- RENDERIZAÇÃO ---
+  const clientesFiltrados = clients.filter(client => 
+    client.olt_regiao && client.olt_regiao.toLowerCase().includes(filtro.toLowerCase())
+  );
+
   return (
+    // Container principal com padding responsivo
     <div className="min-h-screen text-gray-800 p-4 sm:p-8">
       <div className="max-w-7xl mx-auto">
+        
+        {/* Cabeçalho da Página */}
         <header className="mb-8">
           <h1 className="text-4xl font-bold text-gray-800">Dashboard de ONUs</h1>
-          <p className="text-gray-500">Monitoramento de clientes offline por mais de 48 horas.</p>
+          <p className="text-gray-500 mt-1">Monitoramento de clientes offline por mais de 48 horas.</p>
         </header>
 
-        <main className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-8">
+        {/* Layout em Grid (2 colunas em telas grandes) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Coluna Principal (esquerda) */}
+          <main className="lg:col-span-2 space-y-8">
             <UploadFile onUpload={handleUpload} isLoading={isUploading} />
-            <ClientTable clients={clients} isLoading={isLoading} />
-          </div>
+            
+            {/* Tabela e Filtro agrupados em um card */}
+            <div className="bg-white p-6 rounded-xl shadow-md space-y-4">
+              <h3 className="text-lg font-semibold text-gray-700">Clientes Offline</h3>
+              <input 
+                type="text"
+                placeholder="Filtrar por OLT/Região..."
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+              />
+              <ClientTable clients={clientesFiltrados} isLoading={isLoading} />
+            </div>
+          </main>
 
-          <div className="space-y-8">
+          {/* Coluna Lateral (direita) */}
+          <aside className="space-y-8">
             <StatsCard 
-              title="Total Clientes OFF > 48h" 
-              value={isLoading ? '...' : clients.length}
+              title="Clientes OFF > 48h (Exibidos)" 
+              value={isLoading ? '...' : clientesFiltrados.length}
               icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               }
             />
-          </div>
-        </main>
+          </aside>
+        </div>
       </div>
     </div>
   );
 }
-
