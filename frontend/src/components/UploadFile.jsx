@@ -1,58 +1,56 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { CloudUploadIcon } from './Icons.jsx'; // Importando o ícone
 
-// Este componente receberá duas props:
-// onUpload: Uma função que será chamada quando o formulário for enviado.
-// isLoading: Um booleano para sabermos se um upload já está em andamento.
 export default function UploadFile({ onUpload, isLoading }) {
-  // Usamos o 'useState' para guardar o arquivo que o usuário selecionou.
-  // 'selectedFile' armazena o arquivo, e 'setSelectedFile' é a função para atualizá-lo.
   const [selectedFile, setSelectedFile] = useState(null);
 
-  const handleFileChange = (event) => {
-    // Quando o usuário escolhe um arquivo, o guardamos no nosso estado.
-    setSelectedFile(event.target.files[0]);
-  };
+  const onDrop = useCallback(acceptedFiles => {
+    if (acceptedFiles && acceptedFiles.length > 0) {
+      setSelectedFile(acceptedFiles[0]);
+    }
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'application/vnd.ms-excel': ['.xls'],
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'text/csv': ['.csv'],
+    },
+    maxFiles: 1,
+  });
 
   const handleSubmit = (event) => {
-    // Previne o comportamento padrão do formulário (que é recarregar a página).
     event.preventDefault();
     if (selectedFile) {
-      // Se um arquivo foi selecionado, chamamos a função 'onUpload'
-      // que recebemos via props, passando o arquivo para o componente pai (App.jsx).
       onUpload(selectedFile);
+      setSelectedFile(null); // Limpa o arquivo após o envio
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow-md">
-      <h3 className="text-lg font-semibold text-gray-700 mb-4">Atualizar Dados</h3>
-      {/* Quando o formulário é submetido, a função handleSubmit é chamada */}
-      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-4">
-        
-        {/* Usamos um 'label' estilizado para criar uma área de clique bonita.
-            O 'input' de arquivo real fica escondido. */}
-        <label htmlFor="file-upload" className="flex-grow border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50">
-          <span className="text-gray-500">
-            {/* Mostra o nome do arquivo selecionado ou um texto padrão */}
-            {selectedFile ? selectedFile.name : 'Clique para selecionar o relatório'}
-          </span>
-          <input 
-            id="file-upload" 
-            type="file" 
-            className="hidden" 
-            onChange={handleFileChange}
-            // Aceita apenas os formatos de arquivo especificados
-            accept=".csv, .xlsx, .xls" 
-          />
-        </label>
+    <div className="bg-white p-6 rounded-xl shadow-lg h-full flex flex-col">
+      <h3 className="text-xl font-semibold text-gray-700 mb-4">Atualizar Relatório</h3>
+      <form onSubmit={handleSubmit} className="flex flex-col flex-grow">
+        <div
+          {...getRootProps()}
+          className={`flex-grow flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer transition-colors
+            ${isDragActive ? 'border-red-500 bg-red-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}`}
+        >
+          <input {...getInputProps()} />
+          <CloudUploadIcon className="w-12 h-12 text-gray-400 mb-2" />
+          <p className="text-center text-gray-500">
+            {selectedFile ? selectedFile.name : (isDragActive ? 'Solte o arquivo aqui!' : 'Arraste ou clique para selecionar')}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">.XLSX, .XLS ou .CSV</p>
+        </div>
         
         <button 
           type="submit" 
-          // O botão é desabilitado se nenhum arquivo for selecionado ou se um upload estiver em andamento.
           disabled={!selectedFile || isLoading}
-          className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-300"
+          className="w-full bg-red-600 text-white font-bold py-3 mt-4 rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-300"
         >
-          {/* O texto do botão muda para indicar o estado de carregamento */}
           {isLoading ? 'Enviando...' : 'Enviar Arquivo'}
         </button>
       </form>
