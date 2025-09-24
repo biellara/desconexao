@@ -1,174 +1,223 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 
 // Componentes
-import StatsCard from './components/StatsCard.jsx';
-import UploadFile from './components/UploadFile.jsx';
+import KpiCard from './components/KpiCard.jsx';
+import UploadCard from './components/UploadCard.jsx';
 import ClientTable from './components/ClientTable.jsx';
-import { FilterIcon, UsersIcon, TrashIcon } from './components/Icons.jsx'; // Importa o novo ícone
+import ChartContainer from './components/ChartContainer.jsx';
+import ClientsByRegionChart from './components/ClientsByRegionChart.jsx';
+import OfflineHistoryChart from './components/OfflineHistoryChart.jsx';
+import Modal from './components/Modal.jsx';
+import { UsersIcon, ClockIcon, GlobeAltIcon, SearchIcon, TrashIcon, AlertTriangleIcon } from './components/Icons.jsx';
 
 // --- CONFIGURAÇÃO ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 const apiClient = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000',
 });
 
 export default function App() {
+  // Estados de dados
   const [clients, setClients] = useState([]);
+  const [kpiData, setKpiData] = useState(null);
+  const [regionData, setRegionData] = useState([]);
+  const [historyData, setHistoryData] = useState([]);
+
+  // Estados de UI
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [filtro, setFiltro] = useState('');
-  const [selectedIds, setSelectedIds] = useState([]); // Estado para os IDs selecionados
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [modalState, setModalState] = useState({ show: false, type: '', title: '', message: '', onConfirm: null });
 
   // --- FUNÇÕES DE DADOS ---
-  const fetchClients = async () => {
+  const fetchAllData = useCallback(async () => {
     setIsLoading(true);
-    const { data, error } = await supabase.from('clientes_off').select('*').order('data_desconexao', { ascending: false });
-    if (error) {
-        console.error("Erro ao buscar clientes:", error);
-        alert(`Erro ao buscar clientes: ${error.message}`);
-    } else {
-        setClients(data);
+    try {
+      const [clientsRes, kpiRes, regionRes, historyRes] = await Promise.all([
+        supabase.from('clientes_off').select('*').order('data_desconexao', { ascending: false }),
+        apiClient.get('/stats/kpi'),
+        apiClient.get('/stats/by-region'),
+        apiClient.get('/stats/history')
+      ]);
+
+      if (clientsRes.error) throw new Error(clientsRes.error.message);
+      
+      setClients(clientsRes.data || []);
+      setKpiData(kpiRes.data);
+      setRegionData(regionRes.data);
+      setHistoryData(historyRes.data);
+    } catch (error) {
+      showModal('error', 'Erro ao Carregar Dados', `Não foi possível buscar os dados do dashboard: ${error.message}`);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
+  }, []);
+  
+  useEffect(() => { fetchAllData(); }, [fetchAllData]);
+
+  // --- LÓGICA DE MODAL ---
+  const showModal = (type, title, message, onConfirm = null) => {
+    setModalState({ show: true, type, title, message, onConfirm });
   };
   
-  useEffect(() => { fetchClients(); }, []);
+  const hideModal = () => {
+    setModalState({ show: false, type: '', title: '', message: '', onConfirm: null });
+  };
+  
+  const handleConfirm = () => {
+    if (modalState.onConfirm) {
+      modalState.onConfirm();
+    }
+    hideModal();
+  };
 
+  // --- LÓGICA DE UPLOAD ---
   const handleUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
     setIsUploading(true);
     try {
       const response = await apiClient.post('/upload', formData);
-      alert(response.data.message);
-      await fetchClients();
+      showModal('success', 'Sucesso!', response.data.message);
+      await fetchAllData();
+      setSelectedIds([]);
     } catch (error) {
       const errorMessage = error.response?.data?.detail || "Erro desconhecido ao enviar o arquivo.";
-      alert(errorMessage);
+      showModal('error', 'Falha no Upload', errorMessage);
     } finally {
       setIsUploading(false);
     }
   };
 
-  // --- FUNÇÕES DE EXCLUSÃO ---
-  const handleDeleteAll = async () => {
-    if (window.confirm("Você tem certeza que deseja excluir TODO o histórico? Esta ação não pode ser desfeita.")) {
-      try {
-        const response = await apiClient.delete('/clients/all');
-        alert(response.data.message);
-        await fetchClients();
-        setSelectedIds([]);
-      } catch (error) {
-        alert(error.response?.data?.detail || "Erro ao excluir o histórico.");
-      }
-    }
+  // --- LÓGICA DE EXCLUSÃO ---
+  const confirmDeleteAll = () => {
+    showModal('confirm', 'Limpar Histórico?', 'Você tem certeza que deseja excluir TODO o histórico? Esta ação não pode ser desfeita.', async () => {
+        try {
+            const response = await apiClient.delete('/clients/all');
+            showModal('success', 'Histórico Limpo!', response.data.message);
+            await fetchAllData();
+            setSelectedIds([]);
+        } catch (error) {
+            showModal('error', 'Erro!', error.response?.data?.detail || "Não foi possível limpar o histórico.");
+        }
+    });
   };
 
-  const handleDeleteSelected = async () => {
+  const confirmDeleteSelected = () => {
     if (selectedIds.length === 0) return;
-    if (window.confirm(`Você tem certeza que deseja excluir os ${selectedIds.length} registros selecionados?`)) {
-      try {
-        const response = await apiClient.delete('/clients', { data: { ids: selectedIds } });
-        alert(response.data.message);
-        await fetchClients();
-        setSelectedIds([]);
-      } catch (error) {
-        alert(error.response?.data?.detail || "Erro ao excluir registros.");
-      }
-    }
+    showModal('confirm', 'Excluir Selecionados?', `Você tem certeza que deseja excluir os ${selectedIds.length} registros selecionados?`, async () => {
+        try {
+            const response = await apiClient.delete('/clients', { data: { ids: selectedIds } });
+            showModal('success', 'Registros Excluídos!', response.data.message);
+            await fetchAllData();
+            setSelectedIds([]);
+        } catch (error) {
+            showModal('error', 'Erro!', error.response?.data?.detail || "Não foi possível excluir os registros.");
+        }
+    });
   };
 
-  // --- FUNÇÕES DE SELEÇÃO E FILTRO ---
-  const handleSelectClient = (id) => {
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(selectedId => selectedId !== id) : [...prev, id]
-    );
-  };
+  // --- FILTRO E SELEÇÃO ---
+  const clientesFiltrados = useMemo(() => clients.filter(client => 
+    Object.values(client).some(value => 
+      String(value).toLowerCase().includes(filtro.toLowerCase())
+    )
+  ), [clients, filtro]);
 
-  const clientesFiltrados = clients.filter(client => 
-    (client.nome_cliente && client.nome_cliente.toLowerCase().includes(filtro.toLowerCase())) ||
-    (client.serial_onu && client.serial_onu.toLowerCase().includes(filtro.toLowerCase())) ||
-    (client.olt_regiao && client.olt_regiao.toLowerCase().includes(filtro.toLowerCase()))
-  );
-
-  const handleSelectAllClients = () => {
+  const handleSelectAll = useCallback(() => {
     if (selectedIds.length === clientesFiltrados.length) {
       setSelectedIds([]);
     } else {
       setSelectedIds(clientesFiltrados.map(client => client.id));
     }
-  };
+  }, [clientesFiltrados, selectedIds.length]);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 p-4 sm:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        <header>
-          <h1 className="text-4xl font-bold text-gray-800">Dashboard de ONUs Offline</h1>
-          <p className="text-gray-500 mt-2">Monitoramento de clientes desconectados por mais de 48 horas.</p>
-        </header>
+    <>
+      <Modal {...modalState} onConfirm={handleConfirm} onCancel={hideModal} />
+      <div className="min-h-screen bg-gray-100 text-gray-800">
+        <div className="max-w-screen-2xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+          
+          <header>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">Dashboard de Clientes Offline</h1>
+            <p className="text-gray-600 mt-1">Análise de desconexões críticas na rede ({'>'} 48h).</p>
+          </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="md:col-span-1"><UploadFile onUpload={handleUpload} isLoading={isUploading} /></div>
-          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-8">
-            <StatsCard title="Total de Clientes Offline" value={isLoading ? '...' : clients.length} icon={<UsersIcon className="h-8 w-8" />} />
-            <StatsCard title="Exibidos no Filtro" value={isLoading ? '...' : clientesFiltrados.length} icon={<FilterIcon className="h-8 w-8" />} />
-          </div>
-        </div>
+          <main className="space-y-8">
+            {/* Seção de KPIs */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <KpiCard title="Total de Clientes Offline" value={kpiData?.total_offline ?? '0'} icon={<UsersIcon className="h-8 w-8" />} isLoading={isLoading} />
+              <KpiCard title="Média de Horas Offline" value={`${kpiData?.media_horas_offline ?? '0'}h`} icon={<ClockIcon className="h-8 w-8" />} isLoading={isLoading} />
+              <KpiCard title="Região Mais Afetada" value={kpiData?.regiao_mais_afetada ?? 'N/A'} icon={<GlobeAltIcon className="h-8 w-8" />} isLoading={isLoading} />
+            </section>
+            
+            {/* Seção de Gráficos */}
+            <section className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+              <div className="lg:col-span-2">
+                <ChartContainer title="Clientes por Região" isLoading={isLoading}>
+                    <ClientsByRegionChart chartData={regionData} />
+                </ChartContainer>
+              </div>
+              <div className="lg:col-span-3">
+                <ChartContainer title="Histórico de Desconexões" isLoading={isLoading}>
+                    <OfflineHistoryChart chartData={historyData} />
+                </ChartContainer>
+              </div>
+            </section>
 
-        <div className="bg-white p-6 rounded-xl shadow-lg">
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-            <h3 className="text-xl font-semibold text-gray-700">Lista de Clientes Offline</h3>
-            <div className="relative w-full sm:w-72">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3">
-                    <FilterIcon className="h-5 w-5 text-gray-400" />
-                </span>
-                <input 
-                    type="text"
-                    placeholder="Filtrar por nome, serial ou região..."
-                    className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition"
-                    value={filtro}
-                    onChange={(e) => setFiltro(e.target.value)}
-                />
-            </div>
-          </div>
+            {/* Seção Operacional */}
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+              <div className="lg:col-span-1">
+                <UploadCard onUpload={handleUpload} isLoading={isUploading} />
+              </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 p-4 bg-gray-50 rounded-lg border">
-             <div className="text-sm font-semibold text-gray-700">
-                {selectedIds.length} de {clientesFiltrados.length} selecionado(s)
-             </div>
-             <div className="flex items-center gap-3">
-                <button
-                  onClick={handleDeleteSelected}
-                  disabled={selectedIds.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                  Excluir Selecionados
-                </button>
-                <button
-                  onClick={handleDeleteAll}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  <TrashIcon className="h-4 w-4" />
-                  Limpar Histórico
-                </button>
-             </div>
-          </div>
-
-          <ClientTable 
-            clients={clientesFiltrados} 
-            isLoading={isLoading}
-            selectedIds={selectedIds}
-            onSelectClient={handleSelectClient}
-            onSelectAllClients={handleSelectAllClients}
-          />
+              <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-lg">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">Clientes Atualmente Offline</h3>
+                    <div className="relative w-full md:w-64">
+                      <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input 
+                        type="text"
+                        placeholder="Filtrar dados..."
+                        className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                        value={filtro}
+                        onChange={(e) => setFiltro(e.target.value)}
+                      />
+                    </div>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 p-3 bg-gray-50 rounded-lg border">
+                    <div className="text-sm font-semibold text-gray-700">
+                      {selectedIds.length} de {clientesFiltrados.length} selecionado(s)
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button onClick={confirmDeleteSelected} disabled={selectedIds.length === 0} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors">
+                            <TrashIcon className="h-4 w-4" /> Excluir Seleção
+                        </button>
+                        <button onClick={confirmDeleteAll} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">
+                            <AlertTriangleIcon className="h-4 w-4" /> Limpar Tudo
+                        </button>
+                    </div>
+                </div>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <ClientTable 
+                    clients={clientesFiltrados} 
+                    isLoading={isLoading && clients.length === 0}
+                    selectedIds={selectedIds}
+                    onSelectClient={(id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id])}
+                    onSelectAllClients={handleSelectAll}
+                  />
+                </div>
+              </div>
+            </section>
+          </main>
         </div>
       </div>
-    </div>
+    </>
   );
 }
