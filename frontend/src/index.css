@@ -1,14 +1,12 @@
-/*
-  Este arquivo importa as diretivas base do Tailwind.
-  Ele substitui o conteúdo padrão do index.css.
-  Apague todo o conteúdo que veio com o Vite e substitua por estas 3 linhas.
-*/
+/* Importando a fonte Inter no topo do arquivo */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Adicionamos um fundo sutil para a página inteira */
 body {
   background-color: #f0f2f5;
+  /* Opcional: Aplicar a nova fonte como padrão */
+  font-family: 'Inter', sans-serif;
 }
-

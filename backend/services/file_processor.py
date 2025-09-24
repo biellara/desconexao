@@ -1,7 +1,9 @@
 import pandas as pd
+import numpy as np # Importa a biblioteca numpy
 from datetime import datetime, timezone
+from typing import Dict, Any
 
-def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> list:
+def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> list[Dict[str, Any]]:
     """
     Processa um DataFrame de relatório para encontrar clientes offline > 48h.
     
@@ -13,72 +15,57 @@ def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> list:
         Uma lista de dicionários, cada um representando um cliente a ser inserido no banco.
     """
     
-    # 1. Mapeamento de possíveis nomes de colunas para um padrão
-    # Isso torna o código mais robusto a variações nos nomes das colunas do relatório.
     colunas_map = {
-        'Nome Cliente': 'nome_cliente',
-        'Serial ONU': 'serial_onu',
+        'Nome Cliente': 'nome_cliente', 'Cliente': 'nome_cliente',
+        'Serial ONU': 'serial_onu', 'SN ONU': 'serial_onu',
         'OLT': 'olt_regiao',
         'Status': 'status_conexao',
-        'Ultima Comunicacao': 'data_desconexao'
+        'Ultima Comunicacao': 'data_desconexao', 'Última Alteração de Status': 'data_desconexao'
     }
-    # Renomeia as colunas do DataFrame de acordo com o mapeamento
     df.rename(columns=colunas_map, inplace=True)
     
-    # Validação: verifica se as colunas essenciais existem após o renomeio
     colunas_necessarias = ['status_conexao', 'data_desconexao']
     if not all(coluna in df.columns for coluna in colunas_necessarias):
-        raise ValueError("O arquivo não contém as colunas necessárias: 'Status' e 'Ultima Comunicacao'")
+        raise ValueError("O arquivo não contém as colunas necessárias: 'Status' e ('Ultima Comunicacao' ou 'Última Alteração de Status')")
 
-    # 2. Filtra apenas clientes com status "LOSS" (ignorando maiúsculas/minúsculas)
-    clientes_loss = df[df['status_conexao'].str.strip().str.upper() == 'LOSS'].copy()
+    df_loss = df[df['status_conexao'].str.strip().str.upper() == 'LOSS'].copy()
     
-    if clientes_loss.empty:
-        return [] # Retorna lista vazia se nenhum cliente com status LOSS for encontrado
+    if df_loss.empty:
+        return []
 
-    # 3. Converte a coluna de data para o formato datetime
-    # 'errors="coerce"' transforma datas inválidas em NaT (Not a Time), que serão removidas
-    clientes_loss['data_desconexao'] = pd.to_datetime(clientes_loss['data_desconexao'], errors='coerce')
-    clientes_loss.dropna(subset=['data_desconexao'], inplace=True) # Remove linhas com datas inválidas
-    
-    # 4. Calcula o tempo offline em horas
-    # Pega a data e hora atual com fuso horário (UTC) para um cálculo preciso
+    df_loss['data_desconexao'] = pd.to_datetime(df_loss['data_desconexao'], errors='coerce')
+    df_loss.dropna(subset=['data_desconexao'], inplace=True)
+
     agora_utc = datetime.now(timezone.utc)
+    df_loss['data_desconexao'] = df_loss['data_desconexao'].dt.tz_localize('UTC', ambiguous='infer')
+    df_loss['horas_offline'] = (agora_utc - df_loss['data_desconexao']).dt.total_seconds() / 3600
     
-    # Garante que a coluna de desconexão também tenha fuso horário UTC
-    clientes_loss['data_desconexao'] = clientes_loss['data_desconexao'].dt.tz_localize('UTC', ambiguous='infer')
+    df_off_48h = df_loss[df_loss['horas_offline'] > 48].copy()
 
-    # Calcula a diferença e converte para horas
-    clientes_loss['horas_offline'] = (agora_utc - clientes_loss['data_desconexao']).dt.total_seconds() / 3600
-    
-    # 5. Filtra clientes offline há mais de 48 horas
-    clientes_off_48h = clientes_loss[clientes_loss['horas_offline'] > 48].copy()
+    if df_off_48h.empty:
+        return []
 
-    if clientes_off_48h.empty:
-        return [] # Nenhum cliente atingiu o limite de 48h
-
-    # 6. Prepara os dados para inserção no Supabase
-    clientes_off_48h['relatorio_id'] = relatorio_id
+    df_off_48h['relatorio_id'] = relatorio_id
+    df_off_48h['horas_offline'] = df_off_48h['horas_offline'].astype(int)
     
-    # Converte horas para inteiro
-    clientes_off_48h['horas_offline'] = clientes_off_48h['horas_offline'].astype(int)
-    
-    # Seleciona apenas as colunas que correspondem à tabela 'clientes_off'
     colunas_para_db = [
         'relatorio_id', 'nome_cliente', 'serial_onu', 
         'olt_regiao', 'data_desconexao', 'horas_offline'
     ]
     
-    # Garante que todas as colunas necessárias existam, preenchendo com None se faltar
     for col in colunas_para_db:
-        if col not in clientes_off_48h.columns:
-            clientes_off_48h[col] = None
-            
-    # Converte o DataFrame para uma lista de dicionários
-    dados_para_inserir = clientes_off_48h[colunas_para_db].to_dict('records')
+        if col not in df_off_48h.columns:
+            df_off_48h[col] = None
     
-    # Converte o datetime para o formato string ISO 8601, que o Supabase entende
+    # --- ETAPA DE LIMPEZA ADICIONADA ---
+    # Substitui valores infinitos (inf, -inf) e NaN por None (que vira null em JSON)
+    # Isso garante que o DataFrame seja compatível com JSON.
+    df_final = df_off_48h[colunas_para_db].copy()
+    df_final.replace([np.inf, -np.inf], np.nan, inplace=True)
+    dados_para_inserir = df_final.where(pd.notna(df_final), None).to_dict('records')
+    
     for record in dados_para_inserir:
-        record['data_desconexao'] = record['data_desconexao'].isoformat()
+        if record.get('data_desconexao'):
+            record['data_desconexao'] = record['data_desconexao'].isoformat()
 
     return dados_para_inserir
