@@ -8,7 +8,7 @@ export default function ChartContainer({ title, children, isLoading }) {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-lg h-full flex flex-col">
       <h3 className="text-xl font-bold text-gray-800 mb-4">{title}</h3>
-      <div className="flex-grow flex items-center justify-center min-h-[300px]">
+      <div className="flex-grow flex items-center justify-center min-h-[400px]">
         {isLoading ? <Skeleton /> : children}
       </div>
     </div>

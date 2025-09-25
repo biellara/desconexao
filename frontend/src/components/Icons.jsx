@@ -77,3 +77,62 @@ export const XCircleIcon = ({ className }) => (
   </Icon>
 );
 
+// Ícone de seta para cima (ordenação)
+export const ChevronUpIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+  </Icon>
+);
+
+// Ícone de seta para baixo (ordenação)
+export const ChevronDownIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+  </Icon>
+);
+
+// Ícone para dupla seta (indicador de ordenação neutro)
+export const ChevronUpDownIcon = ({ className }) => (
+    <Icon className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+    </Icon>
+);
+
+
+// Ícone para Porcentagem
+export const PercentIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 5a2 2 0 11-4 0 2 2 0 014 0zM9 19a2 2 0 11-4 0 2 2 0 014 0z" />
+  </Icon>
+);
+
+// Ícone para Cidade/Localização
+export const LocationMarkerIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+  </Icon>
+);
+
+// Ícone para Exportar
+export const DownloadIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+  </Icon>
+);
+
+// Ícone de Sol (Light Mode)
+export const SunIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M12 12a4 4 0 11-8 0 4 4 0 018 0z" />
+  </Icon>
+);
+
+// Ícone de Lua (Dark Mode)
+export const MoonIcon = ({ className }) => (
+  <Icon className={className}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+  </Icon>
+);
+

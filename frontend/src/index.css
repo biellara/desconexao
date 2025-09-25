@@ -1,12 +1,32 @@
-/* Importando a fonte Inter no topo do arquivo */
+/* Importando a fonte Inter */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #f0f2f5;
-  /* Opcional: Aplicar a nova fonte como padrão */
-  font-family: 'Inter', sans-serif;
+@layer base {
+  :root {
+    /* Cores Claras */
+    --background: hsl(210, 20%, 98%);
+    --foreground: hsl(210, 10%, 20%);
+    --card: hsl(0, 0%, 100%);
+    --card-foreground: hsl(210, 10%, 20%);
+  }
+
+  .dark {
+    /* Cores Escuras */
+    --background: hsl(210, 15%, 8%);
+    --foreground: hsl(210, 15%, 90%);
+    --card: hsl(210, 15%, 12%);
+    --card-foreground: hsl(210, 15%, 90%);
+  }
 }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--background);
+  color: var(--foreground);
+  transition: background-color 0.3s, color 0.3s;
+}
+

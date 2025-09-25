@@ -31,6 +31,31 @@ export default function OfflineHistoryChart({ chartData }) {
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
+      // --- Lógica do Tooltip com Variação Percentual ---
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const currentValue = context.parsed.y;
+            const label = context.dataset.label || '';
+            const labels = [`${label}: ${currentValue}`];
+
+            if (context.dataIndex > 0) {
+              const previousValue = context.chart.data.datasets[0].data[context.dataIndex - 1];
+              
+              if (previousValue > 0) {
+                const percentChange = ((currentValue - previousValue) / previousValue) * 100;
+                const sign = percentChange > 0 ? '+' : '';
+                const arrow = percentChange >= 0 ? '▲' : '▼';
+                const changeString = `${arrow} ${sign}${percentChange.toFixed(1)}% vs dia anterior`;
+                labels.push(changeString);
+              } else if (currentValue > 0) {
+                labels.push(`▲ Aumento (de 0)`);
+              }
+            }
+            return labels;
+          }
+        }
+      }
     },
     scales: {
       y: { beginAtZero: true, grid: { color: '#e5e7eb' } },

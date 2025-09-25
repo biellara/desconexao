@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { createClient } from '@supabase/supabase-js';
 
-// --- CONFIGURAÇÃO DOS CLIENTES ---
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -10,44 +9,72 @@ const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000',
 });
 
+export const fetchClients = async (params = {}) => {
+  const { 
+    page = 1, limit = 10, searchTerm = '', regionFilter = '', 
+    sortKey = 'horas_offline', sortDirection = 'desc' 
+  } = params;
 
-// --- FUNÇÕES DE SERVIÇO ---
+  let query = supabase.from('clientes_off').select('*', { count: 'exact' });
 
-export const fetchClients = async () => {
-  const { data, error } = await supabase
-    .from('clientes_off')
-    .select('*')
-    .order('data_desconexao', { ascending: false });
-  
+  if (searchTerm) {
+    query = query.or(`nome_cliente.ilike.%${searchTerm}%,serial_onu.ilike.%${searchTerm}%`);
+  }
+  if (regionFilter) {
+    query = query.eq('olt_regiao', regionFilter);
+  }
+  if (sortKey && sortDirection) {
+    query = query.order(sortKey, { ascending: sortDirection === 'asc' });
+  }
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
+  return { data, error, count };
+};
+
+export const fetchAllClientsForExport = async () => {
+  const { data, error } = await supabase.from('clientes_off').select('*').order('horas_offline', { ascending: false });
   return { data, error };
+};
+
+export const fetchUniqueRegions = async () => {
+    const { data, error } = await supabase.rpc('get_unique_olt_regions');
+    const regions = data ? data.map(item => item.olt_regiao) : [];
+    return { data: regions, error };
+};
+
+export const fetchDashboardKpis = async () => {
+    const { data } = await apiClient.get('/stats/kpis');
+    return data;
+};
+
+export const fetchClientsByCityStats = async () => {
+    const { data } = await apiClient.get('/stats/clients-by-city');
+    return data;
+};
+
+export const fetchOfflineHistoryStats = async () => {
+    const { data } = await apiClient.get('/stats/offline-history');
+    return data;
 };
 
 export const uploadFile = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
-  
   const response = await apiClient.post('/upload', formData);
   return response.data;
 };
 
-// --- NOVAS FUNÇÕES DE EXCLUSÃO ---
-
-/**
- * Exclui todos os clientes da base de dados.
- */
 export const deleteAllClients = async () => {
     const response = await apiClient.delete('/clients/all');
     return response.data;
 };
 
-/**
- * Exclui clientes com base em uma lista de IDs.
- * @param {number[]} ids - Lista de IDs dos clientes a serem excluídos.
- */
 export const deleteSelectedClients = async (ids) => {
-    const response = await apiClient.delete('/clients', {
-        data: { ids } // Em requisições DELETE, o corpo é enviado via `data`
-    });
+    const response = await apiClient.delete('/clients', { data: { ids } });
     return response.data;
 };
 
