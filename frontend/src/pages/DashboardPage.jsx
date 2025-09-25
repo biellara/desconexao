@@ -11,6 +11,7 @@ import {
   fetchClientsByCityStats,
   fetchOfflineHistoryStats,
   fetchReportStatus,
+  createErpAttendance
 } from "../services/api.js";
 import KpiCard from "../components/KpiCard.jsx";
 import UploadCard from "../components/UploadCard.jsx";
@@ -294,6 +295,25 @@ export default function DashboardPage() {
     setModalState({ isOpen: false });
   };
 
+  const handleAbrirAtendimento = async (clientName) => {
+    if (!clientName) {
+      showErrorToast("Nome do cliente não encontrado para criar atendimento.");
+      return;
+    }
+    const toastId = "erp-toast";
+    showLoadingToast(`Criando atendimento para ${clientName}...`, { id: toastId });
+    try {
+      const result = await createErpAttendance(clientName);
+      toast.dismiss(toastId);
+      showSuccessToast(result.message, { id: toastId });
+      // Não há necessidade de recarregar os dados, pois a ação é externa.
+    } catch (error) {
+      toast.dismiss(toastId);
+      const errorMessage = error.response?.data?.detail || "Não foi possível criar o atendimento.";
+      showErrorToast(errorMessage, { id: toastId });
+    }
+  };
+
   return (
     <>
       <Toaster position="bottom-right" />
@@ -456,6 +476,7 @@ export default function DashboardPage() {
                 onPageChange={(page) => setCurrentPage(page)}
                 totalItems={totalCount}
                 itemsPerPage={itemsPerPage}
+                onAbrirAtendimento={handleAbrirAtendimento}
               />
             </div>
           </main>

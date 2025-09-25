@@ -47,6 +47,7 @@ export default function ClientTable({
   onPageChange,
   totalItems,
   itemsPerPage,
+  onAbrirAtendimento,
 }) {
   const firstItem = totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
   const lastItem = Math.min(firstItem + itemsPerPage - 1, totalItems);
@@ -116,6 +117,9 @@ export default function ClientTable({
               >
                 Desconectado há
               </SortableHeader>
+              <th scope="col" className="px-6 py-4 text-center">
+                Ações
+              </th>
             </tr>
           </thead>
           <tbody
@@ -169,6 +173,16 @@ export default function ClientTable({
                     locale: ptBR,
                   })}
                 </td>
+                <td className="px-6 py-4 text-center">
+                  <button
+                    onClick={() => onAbrirAtendimento(client.nome_cliente)}
+                    title={`Abrir atendimento para ${client.nome_cliente}`}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    disabled={isLoading}
+                  >
+                    Abrir Atendimento
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -207,3 +221,4 @@ export default function ClientTable({
     </>
   );
 }
+

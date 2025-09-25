@@ -83,3 +83,8 @@ export const deleteSelectedClients = async (ids) => {
     const response = await apiClient.delete('/clients', { data: { ids } });
     return response.data;
 };
+
+export const createErpAttendance = async (clientName) => {
+    const response = await apiClient.post('/erp/create-attendance', { client_name: clientName });
+    return response.data;
+};

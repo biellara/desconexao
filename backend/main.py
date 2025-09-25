@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 import logging
+import os # Importar a biblioteca os
 from typing import List, Optional
 from pydantic import BaseModel, Field
+import httpx
 
 # --- Configuração do Logging ---
 logging.basicConfig(
@@ -18,7 +20,15 @@ logger = logging.getLogger(__name__)
 from services.supabase_client import supabase
 from services.file_processor import processar_relatorio
 
+# --- Carregar o Token do ERP do ambiente ---
+ERP_TOKEN = os.getenv("ERP_API_TOKEN")
+if not ERP_TOKEN:
+    logger.warning("A variável de ambiente ERP_API_TOKEN não está definida. A integração com o ERP pode falhar.")
+
+
 # --- Modelos Pydantic (Tipagem de Dados) ---
+class ErpRequest(BaseModel):
+    client_name: str = Field(..., example="GABRIEL DIAS DE LARA")
 
 class DeleteRequest(BaseModel):
     ids: List[int] = Field(..., example=[1, 2, 3])
@@ -30,7 +40,6 @@ class UploadResponse(BaseModel):
     message: str = Field(..., example="Arquivo recebido! Processamento iniciado.")
     relatorio_id: int
 
-# Modelo de resposta para os NOVOS KPIs
 class NewKpiStatsResponse(BaseModel):
     new_critical_cases_24h: Optional[int] = Field(None, example=15)
     most_critical_olt: Optional[str] = Field(None, example="OLT-APU-FH-COLONIAL")
@@ -40,11 +49,12 @@ class ReportStatusResponse(BaseModel):
     status: str
     detalhes_erro: Optional[str] = None
 
+
 # --- Configuração do App FastAPI ---
 app = FastAPI(
     title="Dashboard ONUs API",
     description="API para processar relatórios de ONUs e identificar clientes offline.",
-    version="1.1.0"
+    version="1.2.1"
 )
 
 app.add_middleware(
@@ -55,6 +65,73 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# --- Rota de Integração com ERP (Atualizada com Autenticação) ---
+@app.post("/erp/create-attendance", response_model=MessageResponse, tags=["ERP"], summary="Cria um atendimento no ERP")
+async def create_erp_attendance(request: ErpRequest):
+    if not ERP_TOKEN:
+        raise HTTPException(status_code=500, detail="Token da API do ERP não configurado no servidor.")
+
+    ERP_BASE_URL = "https://erp.iredinternet.com.br:45701/api/v1/Projects/Attendance"
+    client_name_encoded = request.client_name.replace(" ", "%20")
+    
+    # 2. Criar o cabeçalho de autenticação
+    auth_headers = {"Authorization": f"Bearer {ERP_TOKEN}"}
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Passo 1: Buscar o ID do cliente no ERP
+            find_people_url = f"{ERP_BASE_URL}/FindPeople?Page=1&PageSize=1&search={client_name_encoded}"
+            logger.info(f"Buscando cliente no ERP: {find_people_url}")
+            
+            # 3. Usar os headers na requisição
+            erp_response = await client.get(find_people_url, headers=auth_headers, timeout=10.0)
+            erp_response.raise_for_status()
+            
+            response_data = erp_response.json()
+            
+            clients_found = response_data.get("response", {}).get("data", [])
+            if not clients_found:
+                raise HTTPException(status_code=404, detail=f"Cliente '{request.client_name}' não encontrado no ERP.")
+
+            client_id = clients_found[0].get("id")
+            if not client_id:
+                raise HTTPException(status_code=404, detail="ID do cliente não encontrado na resposta do ERP.")
+                
+            logger.info(f"Cliente '{request.client_name}' encontrado com ID: {client_id}")
+
+            # Passo 5: Criar a solicitação de atendimento
+            create_solicitation_url = f"{ERP_BASE_URL}/CreateDefaultSolicitation/{client_id}"
+            logger.info(f"Criando solicitação no ERP para o ID {client_id}")
+            
+            # 3. Usar os headers na requisição
+            create_response = await client.put(
+                create_solicitation_url,
+                json={"clientId": client_id},
+                headers=auth_headers,
+                timeout=10.0
+            )
+            create_response.raise_for_status()
+            
+            logger.info(f"Solicitação criada com sucesso para o cliente ID {client_id}")
+
+        return {"message": f"Atendimento para '{request.client_name}' criado com sucesso no ERP."}
+
+    except httpx.HTTPStatusError as e:
+        error_body = e.response.text
+        logger.error(f"Erro de comunicação com a API do ERP ({e.response.status_code}): {error_body}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Erro ao comunicar com o ERP: {error_body}")
+    except Exception as e:
+        logger.error(f"Erro inesperado na integração com ERP: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Ocorreu um erro inesperado na integração: {str(e)}")
+
+
+# --- Demais Rotas (sem alterações) ---
+
+@app.get("/", tags=["Status"])
+def read_root():
+    return {"status": "API online"}
+
 def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str):
     logger.info(f"Iniciando processamento em background para o relatório ID: {relatorio_id}")
     try:
@@ -64,23 +141,12 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
             io.BytesIO(contents), sep=None, engine='python', encoding='latin-1'
         )
         
-        # 🔥 Normalizar nomes de colunas
         df.columns = (
-            df.columns
-            .str.strip()
-            .str.lower()
-            .str.replace(" ", "_")
-            .str.replace("á", "a")
-            .str.replace("ã", "a")
-            .str.replace("â", "a")
-            .str.replace("é", "e")
-            .str.replace("ê", "e")
-            .str.replace("í", "i")
-            .str.replace("ó", "o")
-            .str.replace("ô", "o")
-            .str.replace("õ", "o")
-            .str.replace("ú", "u")
-            .str.replace("ç", "c")
+            df.columns.str.strip().str.lower()
+            .str.replace(" ", "_").str.replace("á", "a").str.replace("ã", "a")
+            .str.replace("â", "a").str.replace("é", "e").str.replace("ê", "e")
+            .str.replace("í", "i").str.replace("ó", "o").str.replace("ô", "o")
+            .str.replace("õ", "o").str.replace("ú", "u").str.replace("ç", "c")
         )
 
         required = ["status"]
@@ -88,7 +154,6 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
 
         if not all(col in df.columns for col in required):
             raise Exception("Coluna obrigatória 'Status' não encontrada no arquivo.")
-        
         if not any(col in df.columns for col in alternatives):
             raise Exception("Nenhuma coluna de data encontrada ('Ultima Comunicacao' ou 'Última Alteração de Status').")
         
@@ -113,12 +178,6 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
         ).eq('id', relatorio_id).execute()
 
 
-# --- Rotas da API ---
-
-@app.get("/", tags=["Status"])
-def read_root():
-    return {"status": "API online"}
-
 @app.get("/relatorios/status/{relatorio_id}", response_model=ReportStatusResponse, tags=["Relatórios"])
 def get_report_status(relatorio_id: int):
     try:
@@ -129,7 +188,6 @@ def get_report_status(relatorio_id: int):
     except Exception as e:
         logger.error(f"Erro ao buscar status do relatório {relatorio_id}: {e}")
         raise HTTPException(status_code=500, detail="Erro ao consultar o estado do relatório.")
-
 
 @app.post("/upload", response_model=UploadResponse, tags=["Relatórios"], summary="Upload de novo relatório")
 async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
