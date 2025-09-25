@@ -21,7 +21,7 @@ from services.file_processor import processar_relatorio
 # --- Modelos Pydantic (Tipagem de Dados) ---
 
 class DeleteRequest(BaseModel):
-    ids: List[int] = Field(..., example=[1, 2, 3], description="Lista de IDs dos clientes a serem excluídos.")
+    ids: List[int] = Field(..., example=[1, 2, 3])
 
 class MessageResponse(BaseModel):
     message: str = Field(..., example="Operação bem-sucedida.")
@@ -30,20 +30,21 @@ class UploadResponse(BaseModel):
     message: str = Field(..., example="Arquivo recebido! Processamento iniciado.")
     relatorio_id: int
 
-class KpiStatsResponse(BaseModel):
-    avg_offline_hours: Optional[float] = Field(None, example=72.5)
-    city_with_most_offline: Optional[str] = Field(None, example="Apucarana")
+# Modelo de resposta para os NOVOS KPIs
+class NewKpiStatsResponse(BaseModel):
+    new_critical_cases_24h: Optional[int] = Field(None, example=15)
+    most_critical_olt: Optional[str] = Field(None, example="OLT-APU-FH-COLONIAL")
+    oldest_case_days: Optional[int] = Field(None, example=12)
 
 class ReportStatusResponse(BaseModel):
     status: str
     detalhes_erro: Optional[str] = None
 
-
 # --- Configuração do App FastAPI ---
 app = FastAPI(
     title="Dashboard ONUs API",
     description="API para processar relatórios de ONUs e identificar clientes offline.",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 app.add_middleware(
@@ -54,7 +55,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Função de Processamento em Background ---
 def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str):
     logger.info(f"Iniciando processamento em background para o relatório ID: {relatorio_id}")
     try:
@@ -64,6 +64,7 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
             io.BytesIO(contents), sep=None, engine='python', encoding='latin-1'
         )
         
+        # 🔥 Normalizar nomes de colunas
         df.columns = (
             df.columns
             .str.strip()
@@ -96,8 +97,8 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
         if clientes_para_inserir:
             logger.info(f"Encontrados {len(clientes_para_inserir)} clientes offline para inserir no DB.")
             insert_res = supabase.table('clientes_off').insert(clientes_para_inserir).execute()
-            if insert_res.error:
-                raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error.message}")
+            if not insert_res.data:
+                raise Exception("Falha ao salvar clientes no banco de dados.")
         else:
             logger.info(f"Nenhum cliente com status 'LOSS' encontrado no relatório ID: {relatorio_id}.")
         
@@ -107,19 +108,19 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
     except Exception as e:
         error_detail = f"Erro ao processar o arquivo: {str(e)}"
         logger.error(f"Falha no processamento do relatório (ID: {relatorio_id}). Erro: {error_detail}", exc_info=True)
-        supabase.table('relatorios').update({"status": "FAILED", "detalhes_erro": error_detail}).eq('id', relatorio_id).execute()
+        supabase.table('relatorios').update(
+            {"status": "FAILED", "detalhes_erro": error_detail}
+        ).eq('id', relatorio_id).execute()
+
 
 # --- Rotas da API ---
 
-@app.get("/", tags=["Status"], summary="Verifica a saúde da API")
+@app.get("/", tags=["Status"])
 def read_root():
-    """Retorna um status simples para indicar que a API está online."""
     return {"status": "API online"}
 
-# NOVA ROTA para verificar o estado do processamento
-@app.get("/relatorios/status/{relatorio_id}", response_model=ReportStatusResponse, tags=["Relatórios"], summary="Verifica o estado de um relatório")
+@app.get("/relatorios/status/{relatorio_id}", response_model=ReportStatusResponse, tags=["Relatórios"])
 def get_report_status(relatorio_id: int):
-    """Consulta e retorna o estado atual do processamento de um relatório."""
     try:
         res = supabase.table("relatorios").select("status, detalhes_erro").eq("id", relatorio_id).single().execute()
         if res.data:
@@ -132,14 +133,17 @@ def get_report_status(relatorio_id: int):
 
 @app.post("/upload", response_model=UploadResponse, tags=["Relatórios"], summary="Upload de novo relatório")
 async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    """Recebe um arquivo, cria um registro e agenda o processamento em background."""
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
         raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Use Excel ou CSV.")
     
     contents = await file.read()
     
-    insert_res = supabase.table('relatorios').insert({"nome_arquivo": file.filename, "status": "PENDING"}).execute()
-    if not insert_res.data or insert_res.error:
+    insert_res = supabase.table('relatorios').insert({
+        "nome_arquivo": file.filename,
+        "status": "PENDING"
+    }).execute()
+
+    if not insert_res.data:
         raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
     
     relatorio_id = insert_res.data[0]['id']
@@ -147,21 +151,19 @@ async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile =
     
     return {"message": "Arquivo recebido! O processamento foi iniciado.", "relatorio_id": relatorio_id}
 
-@app.get("/stats/kpis", response_model=KpiStatsResponse, tags=["Estatísticas"], summary="Busca os KPIs principais")
+@app.get("/stats/kpis", response_model=NewKpiStatsResponse, tags=["Estatísticas"], summary="Busca os KPIs principais")
 def get_main_kpis():
-    """Retorna os principais KPIs: tempo médio offline e cidade com mais quedas."""
     try:
-        response = supabase.rpc('get_dashboard_kpis').execute()
+        response = supabase.rpc('get_new_dashboard_kpis').execute()
         if response.data:
             return response.data[0]
-        return KpiStatsResponse()
+        return NewKpiStatsResponse()
     except Exception as e:
         logger.error(f"Erro ao buscar KPIs em /stats/kpis: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro interno ao buscar KPIs.")
 
-@app.get("/stats/clients-by-city", tags=["Estatísticas"], summary="Clientes offline por cidade")
+@app.get("/stats/clients-by-city", tags=["Estatísticas"])
 def get_clients_by_city():
-    """Retorna a contagem de clientes offline agrupados por cidade."""
     try:
         response = supabase.rpc('get_clients_by_city').execute()
         return response.data
@@ -169,9 +171,8 @@ def get_clients_by_city():
         logger.error(f"Erro em /stats/clients-by-city: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro ao buscar dados por cidade.")
 
-@app.get("/stats/offline-history", tags=["Estatísticas"], summary="Histórico de clientes offline")
+@app.get("/stats/offline-history", tags=["Estatísticas"])
 def get_offline_history():
-    """Retorna a contagem de novos clientes offline por dia."""
     try:
         response = supabase.rpc('get_offline_history').execute()
         return response.data
@@ -179,9 +180,8 @@ def get_offline_history():
         logger.error(f"Erro em /stats/offline-history: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro ao buscar histórico.")
 
-@app.delete("/clients/all", response_model=MessageResponse, tags=["Clientes"], summary="Exclui todos os clientes")
+@app.delete("/clients/all", response_model=MessageResponse, tags=["Clientes"])
 def delete_all_clients():
-    """Exclui TODOS os registros da tabela 'clientes_off'."""
     try:
         delete_res = supabase.table('clientes_off').delete().neq('id', 0).execute()
         count = len(delete_res.data)
@@ -190,9 +190,8 @@ def delete_all_clients():
         logger.error(f"Erro ao excluir todos os clientes: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
 
-@app.delete("/clients", response_model=MessageResponse, tags=["Clientes"], summary="Exclui clientes selecionados")
+@app.delete("/clients", response_model=MessageResponse, tags=["Clientes"])
 def delete_selected_clients(request: DeleteRequest):
-    """Exclui registros da tabela 'clientes_off' com base em uma lista de IDs."""
     if not request.ids:
         raise HTTPException(status_code=400, detail="Nenhum ID foi fornecido.")
     try:
@@ -202,3 +201,4 @@ def delete_selected_clients(request: DeleteRequest):
     except Exception as e:
         logger.error(f"Erro ao excluir clientes selecionados: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
+

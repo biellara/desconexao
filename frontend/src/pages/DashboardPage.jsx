@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import {
   fetchClients,
@@ -10,6 +10,7 @@ import {
   fetchDashboardKpis,
   fetchClientsByCityStats,
   fetchOfflineHistoryStats,
+  fetchReportStatus,
 } from "../services/api.js";
 import KpiCard from "../components/KpiCard.jsx";
 import UploadCard from "../components/UploadCard.jsx";
@@ -19,17 +20,22 @@ import ChartContainer from "../components/ChartContainer.jsx";
 import ClientsByCityChart from "../components/ClientsByCityChart.jsx";
 import OfflineHistoryChart from "../components/OfflineHistoryChart.jsx";
 import Header from "../components/Header.jsx";
-import useDebounce from "../hooks/useDebounce.js"; // Importa o novo hook
+import useDebounce from "../hooks/useDebounce.js";
 import {
   UsersIcon,
   TrashIcon,
   SearchIcon,
-  ClockIcon,
-  LocationMarkerIcon,
-  PercentIcon,
   DownloadIcon,
+  UserPlusIcon,
+  ServerIcon,
+  CalendarIcon,
+  XMarkIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  SpinnerIcon
 } from "../components/Icons.jsx";
 
+// ... (função exportToCSV continua a mesma) ...
 const exportToCSV = (clients) => {
   const headers =
     "Nome Cliente,Serial ONU,OLT/Região,Cidade,Horas Offline,Data Desconexão";
@@ -54,6 +60,43 @@ const exportToCSV = (clients) => {
   document.body.removeChild(link);
 };
 
+// --- COMPONENTE DE AVISO ATUALIZADO ---
+const CustomToast = ({ t, message, type = 'success' }) => {
+  const isVisible = t.visible;
+  const baseClasses = "max-w-md w-full bg-card text-card-foreground shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 transition-all duration-300 ease-in-out";
+  const animationClasses = isVisible ? 'animate-in slide-in-from-bottom-5' : 'animate-out slide-out-to-bottom-5';
+  
+  const iconColor = type === 'success' ? 'text-green-500' : 'text-red-500';
+
+  return (
+    <div className={`${baseClasses} ${animationClasses}`}>
+      <div className="flex-1 w-0 p-4">
+        <div className="flex items-start">
+          <div className="flex-shrink-0 pt-0.5">
+            {type === 'loading' && <SpinnerIcon className="h-6 w-6 text-primary" />}
+            {type === 'success' && <CheckCircleIcon className={`h-6 w-6 ${iconColor}`} />}
+            {type === 'error' && <XCircleIcon className={`h-6 w-6 ${iconColor}`} />}
+          </div>
+          <div className="ml-3 flex-1">
+            <p className="text-sm font-medium">{message}</p>
+          </div>
+        </div>
+      </div>
+      {type !== 'loading' && (
+        <div className="flex border-l border-secondary/20 dark:border-secondary-dark/30">
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center gap-2 text-sm font-medium text-primary hover:text-primary-dark focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <XMarkIcon className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 export default function DashboardPage() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("theme") || "light"
@@ -65,27 +108,21 @@ export default function DashboardPage() {
   const [offlineHistoryData, setOfflineHistoryData] = useState([]);
   const [kpiStats, setKpiStats] = useState({});
   const [totalCount, setTotalCount] = useState(0);
-  const [totalBaseClients] = useState(25000);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [modalState, setModalState] = useState({ isOpen: false });
 
-  // Estados dos filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
-  const [itemsPerPage, setItemsPerPage] = useState(10); // Novo estado para itens por página
-
-  // Aplica o debounce ao termo de busca
-  const debouncedSearchTerm = useDebounce(searchTerm, 500); // Atraso de 500ms
-
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [sortConfig, setSortConfig] = useState({
     key: "horas_offline",
     direction: "desc",
   });
   const [currentPage, setCurrentPage] = useState(1);
-  
   const totalPages = Math.ceil(totalCount / itemsPerPage);
 
   useEffect(() => {
@@ -99,12 +136,24 @@ export default function DashboardPage() {
     setTheme(theme === 'light' ? 'dark' : 'light');
   };
 
+  const showSuccessToast = (message, options) => {
+    toast.custom((t) => <CustomToast t={t} message={message} type="success" />, { ...options, duration: 5000 });
+  };
+  
+  const showErrorToast = (message, options) => {
+    toast.custom((t) => <CustomToast t={t} message={message} type="error" />, { ...options, duration: 5000 });
+  };
+  
+  const showLoadingToast = (message, options) => {
+    toast.custom((t) => <CustomToast t={t} message={message} type="loading" />, { ...options, duration: Infinity });
+  };
+  
   const loadClients = useCallback(async () => {
     setIsLoading(true);
     const params = {
       page: currentPage,
-      limit: itemsPerPage, // Usa o novo estado
-      searchTerm: debouncedSearchTerm, // Usa o termo com debounce
+      limit: itemsPerPage,
+      searchTerm: debouncedSearchTerm,
       regionFilter,
       sortKey: sortConfig.key,
       sortDirection: sortConfig.direction,
@@ -115,7 +164,7 @@ export default function DashboardPage() {
       setClients(data || []);
       setTotalCount(count || 0);
     } catch (error) {
-      toast.error(`Erro ao buscar clientes: ${error.message}`);
+      showErrorToast(`Erro ao buscar clientes: ${error.message}`);
     } finally {
       setIsLoading(false);
       setSelectedIds([]);
@@ -136,43 +185,66 @@ export default function DashboardPage() {
       setOfflineHistoryData(historyData || []);
       setKpiStats(kpisData || {});
     } catch (error) {
-      toast.error("Erro ao carregar dados do dashboard.");
+      showErrorToast("Erro ao carregar dados do dashboard.");
     } finally {
       setIsStatsLoading(false);
     }
   }, []);
-  
-  // Efeito para recarregar os dados quando os filtros mudam
+
   useEffect(() => {
     loadClients();
   }, [loadClients]);
-  
-  // Efeito para carregar os dados agregados (gráficos, kpis) apenas uma vez
+
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  // Efeito para voltar à primeira página sempre que um filtro é alterado
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchTerm, regionFilter, itemsPerPage]);
-
+  
   const refreshAllData = useCallback(() => {
-    setCurrentPage(1);
     loadClients();
     loadDashboardData();
   }, [loadClients, loadDashboardData]);
 
+  const monitorReportStatus = useCallback((reportId, toastId) => {
+    const interval = setInterval(async () => {
+      try {
+        const { status, detalhes_erro } = await fetchReportStatus(reportId);
+        if (status === 'COMPLETED') {
+          clearInterval(interval);
+          toast.dismiss(toastId);
+          showSuccessToast('Relatório processado e dados atualizados!', { id: toastId });
+          refreshAllData();
+        } else if (status === 'FAILED') {
+          clearInterval(interval);
+          toast.dismiss(toastId);
+          showErrorToast(`Falha no processamento: ${detalhes_erro || 'Erro desconhecido'}`, { id: toastId });
+        }
+      } catch (error) {
+        clearInterval(interval);
+        toast.dismiss(toastId);
+        showErrorToast('Não foi possível verificar o estado do processamento.', { id: toastId });
+      }
+    }, 5000);
+
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 120000);
+
+  }, [refreshAllData]);
+
   const handleUpload = async (file) => {
     setIsUploading(true);
     const toastId = "upload-toast";
-    toast.loading("Enviando arquivo...", { id: toastId });
+    showLoadingToast("A enviar... O processamento pode demorar um pouco.", { id: toastId });
     try {
       const response = await uploadFile(file);
-      toast.success(response.message, { id: toastId });
-      setTimeout(refreshAllData, 3000);
+      monitorReportStatus(response.relatorio_id, toastId);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Erro ao enviar.", {
+      toast.dismiss(toastId);
+      showErrorToast(error.response?.data?.detail || "Erro ao enviar.", {
         id: toastId,
       });
     } finally {
@@ -190,13 +262,14 @@ export default function DashboardPage() {
 
   const handleExport = async () => {
     const toastId = "export-toast";
-    toast.loading("Exportando dados...", { id: toastId });
+    showLoadingToast("Exportando dados...", { id: toastId });
     const { data, error } = await fetchAllClientsForExport();
+    toast.dismiss(toastId);
     if (error) {
-      toast.error("Falha ao exportar dados.", { id: toastId });
+      showErrorToast("Falha ao exportar dados.", { id: toastId });
     } else {
       exportToCSV(data);
-      toast.success("Dados exportados!", { id: toastId });
+      showSuccessToast("Dados exportados!", { id: toastId });
     }
   };
 
@@ -206,23 +279,20 @@ export default function DashboardPage() {
   const handleConfirmDelete = async () => {
     if (typeof modalState.onConfirm !== "function") return;
     const toastId = "delete-toast";
-    toast.loading("Excluindo...", { id: toastId });
+    showLoadingToast("A eliminar...", { id: toastId });
     try {
       const response = await modalState.onConfirm();
-      toast.success(response.message, { id: toastId });
+      toast.dismiss(toastId);
+      showSuccessToast(response.message, { id: toastId });
       refreshAllData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Erro ao excluir.", {
+      toast.dismiss(toastId);
+      showErrorToast(error.response?.data?.detail || "Erro ao eliminar.", {
         id: toastId,
       });
     }
     setModalState({ isOpen: false });
   };
-
-  const percentOffline = useMemo(() => {
-    if (!totalBaseClients || !totalCount) return "0.0%";
-    return ((totalCount / totalBaseClients) * 100).toFixed(1) + "%";
-  }, [totalCount, totalBaseClients]);
 
   return (
     <>
@@ -240,38 +310,30 @@ export default function DashboardPage() {
           <Header theme={theme} onThemeToggle={toggleTheme} />
 
           <main className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            {/* ... Seção de KPIs ... */}
-             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            
+            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard
-                title="Total Offline"
-                value={isLoading ? "..." : totalCount}
+                title="Total de Clientes Críticos"
+                value={isStatsLoading ? "..." : totalCount}
                 icon={<UsersIcon />}
-                isLoading={isLoading}
-              />
-              <KpiCard
-                title="% da Base Offline"
-                value={percentOffline}
-                icon={<PercentIcon />}
-                isLoading={isLoading}
-              />
-              <KpiCard
-                title="Cidade + Crítica"
-                value={
-                  isStatsLoading
-                    ? "..."
-                    : kpiStats.city_with_most_offline || "N/A"
-                }
-                icon={<LocationMarkerIcon />}
                 isLoading={isStatsLoading}
               />
               <KpiCard
-                title="Tempo Médio Offline"
-                value={
-                  isStatsLoading
-                    ? "..."
-                    : `${Math.round(kpiStats.avg_offline_hours || 0)}h`
-                }
-                icon={<ClockIcon />}
+                title="Novos Casos (24h)"
+                value={isStatsLoading ? "..." : kpiStats.new_critical_cases_24h ?? '0'}
+                icon={<UserPlusIcon />}
+                isLoading={isStatsLoading}
+              />
+              <KpiCard
+                title="OLT Mais Crítica"
+                value={isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"}
+                icon={<ServerIcon />}
+                isLoading={isStatsLoading}
+              />
+              <KpiCard
+                title="Caso Mais Antigo"
+                value={isStatsLoading ? "..." : `${kpiStats.oldest_case_days || 0} dias`}
+                icon={<CalendarIcon />}
                 isLoading={isStatsLoading}
               />
             </div>
@@ -298,7 +360,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="lg:col-span-4 bg-card text-card-foreground p-6 rounded-2xl shadow-lg">
-              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4">
+               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4">
                 <h3 className="text-xl font-bold">Lista de Clientes</h3>
                 <div className="flex flex-col sm:flex-row w-full xl:w-auto items-center gap-2">
                   <div className="relative w-full sm:w-auto">
@@ -323,7 +385,6 @@ export default function DashboardPage() {
                       </option>
                     ))}
                   </select>
-                  {/* NOVO SELETOR DE ITENS POR PÁGINA */}
                    <select
                     value={itemsPerPage}
                     onChange={(e) => setItemsPerPage(Number(e.target.value))}
@@ -336,8 +397,6 @@ export default function DashboardPage() {
                   </select>
                 </div>
               </div>
-
-              {/* ... Seção de botões ... */}
               <div className="flex justify-end items-center mb-4 gap-2 flex-wrap">
                 <button
                   onClick={handleExport}
