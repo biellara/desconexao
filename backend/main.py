@@ -34,6 +34,11 @@ class KpiStatsResponse(BaseModel):
     avg_offline_hours: Optional[float] = Field(None, example=72.5)
     city_with_most_offline: Optional[str] = Field(None, example="Apucarana")
 
+class ReportStatusResponse(BaseModel):
+    status: str
+    detalhes_erro: Optional[str] = None
+
+
 # --- Configuração do App FastAPI ---
 app = FastAPI(
     title="Dashboard ONUs API",
@@ -77,7 +82,6 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
             .str.replace("ç", "c")
         )
 
-        # 🔎 Agora, garanta que o CSV tenha pelo menos as colunas necessárias
         required = ["status"]
         alternatives = ["ultima_comunicacao", "ultima_alteracao_de_status"]
 
@@ -92,8 +96,8 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
         if clientes_para_inserir:
             logger.info(f"Encontrados {len(clientes_para_inserir)} clientes offline para inserir no DB.")
             insert_res = supabase.table('clientes_off').insert(clientes_para_inserir).execute()
-            if not insert_res.data:
-                raise Exception("Falha ao salvar clientes no banco de dados.")
+            if insert_res.error:
+                raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error.message}")
         else:
             logger.info(f"Nenhum cliente com status 'LOSS' encontrado no relatório ID: {relatorio_id}.")
         
@@ -112,6 +116,20 @@ def read_root():
     """Retorna um status simples para indicar que a API está online."""
     return {"status": "API online"}
 
+# NOVA ROTA para verificar o estado do processamento
+@app.get("/relatorios/status/{relatorio_id}", response_model=ReportStatusResponse, tags=["Relatórios"], summary="Verifica o estado de um relatório")
+def get_report_status(relatorio_id: int):
+    """Consulta e retorna o estado atual do processamento de um relatório."""
+    try:
+        res = supabase.table("relatorios").select("status, detalhes_erro").eq("id", relatorio_id).single().execute()
+        if res.data:
+            return res.data
+        raise HTTPException(status_code=404, detail="Relatório não encontrado.")
+    except Exception as e:
+        logger.error(f"Erro ao buscar status do relatório {relatorio_id}: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar o estado do relatório.")
+
+
 @app.post("/upload", response_model=UploadResponse, tags=["Relatórios"], summary="Upload de novo relatório")
 async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """Recebe um arquivo, cria um registro e agenda o processamento em background."""
@@ -121,7 +139,7 @@ async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile =
     contents = await file.read()
     
     insert_res = supabase.table('relatorios').insert({"nome_arquivo": file.filename, "status": "PENDING"}).execute()
-    if not insert_res.data:
+    if not insert_res.data or insert_res.error:
         raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
     
     relatorio_id = insert_res.data[0]['id']
@@ -184,4 +202,3 @@ def delete_selected_clients(request: DeleteRequest):
     except Exception as e:
         logger.error(f"Erro ao excluir clientes selecionados: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
-

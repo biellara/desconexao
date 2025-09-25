@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import {
   fetchClients,
   uploadFile,
@@ -18,6 +18,8 @@ import Modal from "../components/Modal.jsx";
 import ChartContainer from "../components/ChartContainer.jsx";
 import ClientsByCityChart from "../components/ClientsByCityChart.jsx";
 import OfflineHistoryChart from "../components/OfflineHistoryChart.jsx";
+import Header from "../components/Header.jsx";
+import useDebounce from "../hooks/useDebounce.js"; // Importa o novo hook
 import {
   UsersIcon,
   TrashIcon,
@@ -26,8 +28,6 @@ import {
   LocationMarkerIcon,
   PercentIcon,
   DownloadIcon,
-  SunIcon,
-  MoonIcon,
 } from "../components/Icons.jsx";
 
 const exportToCSV = (clients) => {
@@ -42,10 +42,9 @@ const exportToCSV = (clients) => {
       )}"`
   );
   const csvContent =
-    "data:text/csv;charset=utf-8," + [headers, ...rows].join("\n");
-  const encodedUri = encodeURI(csvContent);
+    "data:text/csv;charset=utf-8," + encodeURIComponent([headers, ...rows].join("\n"));
   const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
+  link.setAttribute("href", csvContent);
   link.setAttribute(
     "download",
     `clientes_offline_${new Date().toISOString().split("T")[0]}.csv`
@@ -66,22 +65,28 @@ export default function DashboardPage() {
   const [offlineHistoryData, setOfflineHistoryData] = useState([]);
   const [kpiStats, setKpiStats] = useState({});
   const [totalCount, setTotalCount] = useState(0);
-  const [totalBaseClients, setTotalBaseClients] = useState(25000); // Defina o total de clientes da sua base
+  const [totalBaseClients] = useState(25000);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [modalState, setModalState] = useState({ isOpen: false });
 
+  // Estados dos filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
+  const [itemsPerPage, setItemsPerPage] = useState(10); // Novo estado para itens por página
+
+  // Aplica o debounce ao termo de busca
+  const debouncedSearchTerm = useDebounce(searchTerm, 500); // Atraso de 500ms
+
   const [sortConfig, setSortConfig] = useState({
     key: "horas_offline",
     direction: "desc",
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
-  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
+  
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
 
   useEffect(() => {
     const root = window.document.documentElement;
@@ -90,12 +95,16 @@ export default function DashboardPage() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+  const toggleTheme = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
+  };
+
   const loadClients = useCallback(async () => {
     setIsLoading(true);
     const params = {
       page: currentPage,
-      limit: ITEMS_PER_PAGE,
-      searchTerm,
+      limit: itemsPerPage, // Usa o novo estado
+      searchTerm: debouncedSearchTerm, // Usa o termo com debounce
       regionFilter,
       sortKey: sortConfig.key,
       sortDirection: sortConfig.direction,
@@ -111,7 +120,7 @@ export default function DashboardPage() {
       setIsLoading(false);
       setSelectedIds([]);
     }
-  }, [currentPage, searchTerm, regionFilter, sortConfig]);
+  }, [currentPage, itemsPerPage, debouncedSearchTerm, regionFilter, sortConfig]);
 
   const loadDashboardData = useCallback(async () => {
     setIsStatsLoading(true);
@@ -132,6 +141,21 @@ export default function DashboardPage() {
       setIsStatsLoading(false);
     }
   }, []);
+  
+  // Efeito para recarregar os dados quando os filtros mudam
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+  
+  // Efeito para carregar os dados agregados (gráficos, kpis) apenas uma vez
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  // Efeito para voltar à primeira página sempre que um filtro é alterado
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm, regionFilter, itemsPerPage]);
 
   const refreshAllData = useCallback(() => {
     setCurrentPage(1);
@@ -139,23 +163,17 @@ export default function DashboardPage() {
     loadDashboardData();
   }, [loadClients, loadDashboardData]);
 
-  useEffect(() => {
-    loadClients();
-  }, [loadClients]);
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
   const handleUpload = async (file) => {
     setIsUploading(true);
-    toast.loading("Enviando arquivo...", { id: "upload-toast" });
+    const toastId = "upload-toast";
+    toast.loading("Enviando arquivo...", { id: toastId });
     try {
       const response = await uploadFile(file);
-      toast.success(response.message, { id: "upload-toast" });
+      toast.success(response.message, { id: toastId });
       setTimeout(refreshAllData, 3000);
     } catch (error) {
       toast.error(error.response?.data?.detail || "Erro ao enviar.", {
-        id: "upload-toast",
+        id: toastId,
       });
     } finally {
       setIsUploading(false);
@@ -163,21 +181,22 @@ export default function DashboardPage() {
   };
 
   const handleSort = (key) => {
+    setCurrentPage(1);
     setSortConfig((prev) => ({
       key,
       direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
     }));
-    setCurrentPage(1);
   };
 
   const handleExport = async () => {
-    toast.loading("Exportando dados...", { id: "export-toast" });
+    const toastId = "export-toast";
+    toast.loading("Exportando dados...", { id: toastId });
     const { data, error } = await fetchAllClientsForExport();
     if (error) {
-      toast.error("Falha ao exportar dados.", { id: "export-toast" });
+      toast.error("Falha ao exportar dados.", { id: toastId });
     } else {
       exportToCSV(data);
-      toast.success("Dados exportados!", { id: "export-toast" });
+      toast.success("Dados exportados!", { id: toastId });
     }
   };
 
@@ -207,6 +226,7 @@ export default function DashboardPage() {
 
   return (
     <>
+      <Toaster position="bottom-right" />
       <Modal
         show={modalState.isOpen}
         title={modalState.title}
@@ -217,29 +237,11 @@ export default function DashboardPage() {
       />
       <div className="min-h-screen bg-background text-foreground p-4 sm:p-8 font-sans">
         <div className="max-w-7xl mx-auto space-y-8">
-          <header className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-bold">
-                Dashboard de Clientes Offline
-              </h1>
-              <p className="text-secondary mt-1">
-                Monitoramento de desconexões na rede.
-              </p>
-            </div>
-            <button
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-              className="p-2 rounded-full hover:bg-secondary-light dark:hover:bg-secondary-dark transition-colors"
-            >
-              {theme === "light" ? (
-                <MoonIcon className="h-6 w-6" />
-              ) : (
-                <SunIcon className="h-6 w-6" />
-              )}
-            </button>
-          </header>
+          <Header theme={theme} onThemeToggle={toggleTheme} />
 
           <main className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* ... Seção de KPIs ... */}
+             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard
                 title="Total Offline"
                 value={isLoading ? "..." : totalCount}
@@ -273,7 +275,7 @@ export default function DashboardPage() {
                 isLoading={isStatsLoading}
               />
             </div>
-
+            
             <div className="lg:col-span-4">
               <UploadCard onUpload={handleUpload} isLoading={isUploading} />
             </div>
@@ -283,7 +285,7 @@ export default function DashboardPage() {
                 title="Histórico de Novos Clientes Offline"
                 isLoading={isStatsLoading}
               >
-                <OfflineHistoryChart chartData={offlineHistoryData} />
+                <OfflineHistoryChart chartData={offlineHistoryData} theme={theme}/>
               </ChartContainer>
             </div>
             <div className="lg:col-span-4">
@@ -291,7 +293,7 @@ export default function DashboardPage() {
                 title="Clientes Offline por Cidade"
                 isLoading={isStatsLoading}
               >
-                <ClientsByCityChart chartData={clientsByCityData} />
+                <ClientsByCityChart chartData={clientsByCityData} theme={theme} />
               </ChartContainer>
             </div>
 
@@ -300,25 +302,19 @@ export default function DashboardPage() {
                 <h3 className="text-xl font-bold">Lista de Clientes</h3>
                 <div className="flex flex-col sm:flex-row w-full xl:w-auto items-center gap-2">
                   <div className="relative w-full sm:w-auto">
-                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary" />
                     <input
                       type="text"
                       placeholder="Buscar por nome ou serial..."
                       value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="pl-10 pr-4 py-2 w-full sm:w-64 border-gray-300 dark:border-gray-600 bg-transparent border rounded-lg focus:ring-2 focus:ring-primary"
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 pr-4 py-2 w-full sm:w-64 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
                     />
                   </div>
                   <select
                     value={regionFilter}
-                    onChange={(e) => {
-                      setRegionFilter(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full sm:w-auto px-4 py-2.5 border-gray-300 dark:border-gray-600 bg-transparent border rounded-lg focus:ring-2 focus:ring-primary"
+                    onChange={(e) => setRegionFilter(e.target.value)}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
                   >
                     <option value="">Todas as Regiões</option>
                     {uniqueRegions.map((r) => (
@@ -327,10 +323,22 @@ export default function DashboardPage() {
                       </option>
                     ))}
                   </select>
+                  {/* NOVO SELETOR DE ITENS POR PÁGINA */}
+                   <select
+                    value={itemsPerPage}
+                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                  >
+                    <option value={10}>10 por página</option>
+                    <option value={25}>25 por página</option>
+                    <option value={50}>50 por página</option>
+                    <option value={100}>100 por página</option>
+                  </select>
                 </div>
               </div>
 
-              <div className="flex justify-end items-center mb-4 gap-2">
+              {/* ... Seção de botões ... */}
+              <div className="flex justify-end items-center mb-4 gap-2 flex-wrap">
                 <button
                   onClick={handleExport}
                   disabled={totalCount === 0}
@@ -347,7 +355,7 @@ export default function DashboardPage() {
                     )
                   }
                   disabled={selectedIds.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-yellow-500 rounded-lg shadow-md hover:bg-yellow-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-yellow-500 rounded-lg shadow-md hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
                   <TrashIcon className="h-4 w-4" /> Excluir (
                   {selectedIds.length})
@@ -361,7 +369,7 @@ export default function DashboardPage() {
                     )
                   }
                   disabled={totalCount === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-alert rounded-lg shadow-md hover:bg-alert-dark disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-alert rounded-lg shadow-md hover:bg-alert-dark disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
                   <TrashIcon className="h-4 w-4" /> Excluir Todos
                 </button>
@@ -388,7 +396,7 @@ export default function DashboardPage() {
                 totalPages={totalPages}
                 onPageChange={(page) => setCurrentPage(page)}
                 totalItems={totalCount}
-                itemsPerPage={ITEMS_PER_PAGE}
+                itemsPerPage={itemsPerPage}
               />
             </div>
           </main>
@@ -397,3 +405,4 @@ export default function DashboardPage() {
     </>
   );
 }
+

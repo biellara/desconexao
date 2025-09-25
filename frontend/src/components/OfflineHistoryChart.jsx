@@ -1,12 +1,14 @@
 import React from 'react';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js';
+import useChartConfig from '../hooks/useChartConfig';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
-export default function OfflineHistoryChart({ chartData }) {
+export default function OfflineHistoryChart({ chartData, theme }) {
+  const chartOptions = useChartConfig(theme);
    if (!chartData || chartData.length === 0) {
-    return <p className="text-gray-500">Não há dados históricos para exibir.</p>;
+    return <p className="text-secondary">Não há dados históricos para exibir.</p>;
   }
   
   const data = {
@@ -27,12 +29,16 @@ export default function OfflineHistoryChart({ chartData }) {
   };
 
   const options = {
-    responsive: true,
-    maintainAspectRatio: false,
+    ...chartOptions,
     plugins: {
+      ...chartOptions.plugins,
       legend: { display: false },
-      // --- Lógica do Tooltip com Variação Percentual ---
+      title: {
+        ...chartOptions.plugins.title,
+        text: 'Histórico de Novos Clientes Offline'
+      },
       tooltip: {
+        ...chartOptions.plugins.tooltip,
         callbacks: {
           label: function(context) {
             const currentValue = context.parsed.y;
@@ -58,8 +64,15 @@ export default function OfflineHistoryChart({ chartData }) {
       }
     },
     scales: {
-      y: { beginAtZero: true, grid: { color: '#e5e7eb' } },
-      x: { grid: { display: false } },
+        ...chartOptions.scales,
+        y: {
+            ...chartOptions.scales.y,
+             grid: { color: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'hsl(210, 20%, 93%)' },
+        },
+        x: {
+            ...chartOptions.scales.x,
+             grid: { display: false } 
+        },
     }
   };
 

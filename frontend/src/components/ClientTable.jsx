@@ -1,7 +1,7 @@
 import React from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale/pt-BR";
-import { ChevronUpIcon, ChevronDownIcon } from "./Icons.jsx";
+import { ChevronUpIcon, ChevronDownIcon, SpinnerIcon } from "./Icons.jsx";
 
 const getBadgeColor = (horasOffline) => {
   if (horasOffline < 24)
@@ -21,7 +21,7 @@ const SortableHeader = ({ children, sortKey, sortConfig, onSort }) => {
   return (
     <th
       scope="col"
-      className="px-6 py-4 cursor-pointer"
+      className="px-6 py-4 cursor-pointer hover:bg-secondary-light/50 dark:hover:bg-secondary-dark/20 transition-colors"
       onClick={() => onSort(sortKey)}
     >
       <div className="flex items-center gap-1">
@@ -51,25 +51,23 @@ export default function ClientTable({
   const firstItem = totalItems > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0;
   const lastItem = Math.min(firstItem + itemsPerPage - 1, totalItems);
 
-  if (isLoading) {
-    return (
-      <div className="w-full text-center py-16 text-secondary">
-        Carregando clientes...
-      </div>
-    );
-  }
+  const renderTableContent = () => {
+    if (totalItems === 0 && !isLoading) {
+      return (
+        <div className="text-center text-secondary py-16">
+          Nenhum cliente offline encontrado.
+        </div>
+      );
+    }
 
-  if (!clients.length && totalItems === 0) {
     return (
-      <div className="text-center text-secondary py-16">
-        Nenhum cliente offline encontrado.
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
+        {/* Overlay de Carregamento */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-card/70 dark:bg-card/50 backdrop-blur-sm flex items-center justify-center z-10">
+            <SpinnerIcon className="h-10 w-10 text-primary" />
+          </div>
+        )}
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-secondary-light dark:bg-secondary-dark/20 text-xs uppercase font-semibold">
             <tr>
@@ -120,7 +118,11 @@ export default function ClientTable({
               </SortableHeader>
             </tr>
           </thead>
-          <tbody className="divide-y divide-secondary-light dark:divide-secondary-dark/30">
+          <tbody
+            className={`divide-y divide-secondary-light dark:divide-secondary-dark/30 ${
+              isLoading ? "opacity-50" : ""
+            }`}
+          >
             {clients.map((client) => (
               <tr
                 key={client.id}
@@ -172,7 +174,12 @@ export default function ClientTable({
           </tbody>
         </table>
       </div>
+    );
+  };
 
+  return (
+    <>
+      {renderTableContent()}
       <div className="flex flex-col sm:flex-row justify-between items-center mt-4 pt-4 border-t border-secondary-light dark:border-secondary-dark/30">
         <span className="text-sm text-secondary mb-2 sm:mb-0">
           Exibindo {firstItem}–{lastItem} de {totalItems} clientes
@@ -180,7 +187,7 @@ export default function ClientTable({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
+            disabled={currentPage === 1 || isLoading}
             className="px-3 py-1 rounded-md disabled:opacity-50 hover:bg-secondary-light dark:hover:bg-secondary-dark transition-colors"
           >
             Anterior
@@ -190,7 +197,7 @@ export default function ClientTable({
           </span>
           <button
             onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage >= totalPages}
+            disabled={currentPage >= totalPages || isLoading}
             className="px-3 py-1 rounded-md disabled:opacity-50 hover:bg-secondary-light dark:hover:bg-secondary-dark transition-colors"
           >
             Próxima

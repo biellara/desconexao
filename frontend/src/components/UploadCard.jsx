@@ -30,26 +30,29 @@ export default function UploadCard({ onUpload, isLoading }) {
   };
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg h-full flex flex-col">
-      <h3 className="text-xl font-bold text-gray-800 mb-4">Atualizar Relatório</h3>
+    <div className="bg-card text-card-foreground p-6 rounded-2xl shadow-lg h-full flex flex-col">
+      <h3 className="text-xl font-bold mb-4">Atualizar Relatório</h3>
       <form onSubmit={handleSubmit} className="flex flex-col flex-grow">
         <div
           {...getRootProps()}
           className={`flex-grow flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors
-            ${isDragActive ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'}`}
+            ${isDragActive 
+              ? 'border-primary bg-primary-light dark:bg-primary-dark/20' 
+              : 'border-secondary/30 bg-background hover:bg-secondary-light dark:hover:bg-secondary-dark/20'
+            }`}
         >
           <input {...getInputProps()} />
-          <UploadIcon className="w-12 h-12 text-gray-400 mb-3" />
-          <p className="text-center font-semibold text-gray-600">
+          <UploadIcon className="w-12 h-12 text-secondary mb-3" />
+          <p className="text-center font-semibold text-foreground">
             {selectedFile ? selectedFile.name : (isDragActive ? 'Solte o arquivo aqui!' : 'Arraste ou clique para selecionar')}
           </p>
-          <p className="text-xs text-gray-500 mt-1">.XLSX, .XLS ou .CSV</p>
+          <p className="text-xs text-secondary mt-1">.XLSX, .XLS ou .CSV</p>
         </div>
         
         <button 
           type="submit" 
           disabled={!selectedFile || isLoading}
-          className="w-full bg-indigo-600 text-white font-bold py-3 mt-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-300 shadow-md hover:shadow-lg"
+          className="w-full bg-primary text-white font-bold py-3 mt-4 rounded-lg hover:bg-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-300 shadow-md hover:shadow-lg"
         >
           {isLoading ? 'Processando...' : 'Processar Arquivo'}
         </button>

@@ -17,16 +17,16 @@ export default function Modal({ type, title, message, onConfirm, onCancel, show 
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md transform transition-all">
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-card text-card-foreground rounded-2xl shadow-xl w-full max-w-md transform transition-all">
         <div className="p-8 text-center">
-          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-gray-100 mb-6">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-background mb-6">
             {icons[type]}
           </div>
-          <h3 className="text-2xl font-bold text-gray-800">{title}</h3>
-          <p className="text-gray-600 mt-4">{message}</p>
+          <h3 className="text-2xl font-bold">{title}</h3>
+          <p className="text-secondary mt-4">{message}</p>
         </div>
-        <div className="bg-gray-50 px-8 py-5 rounded-b-2xl flex flex-col sm:flex-row-reverse gap-4">
+        <div className="bg-background/50 px-8 py-5 rounded-b-2xl flex flex-col sm:flex-row-reverse gap-4">
           {type === 'confirm' ? (
             <>
               <button
@@ -37,7 +37,7 @@ export default function Modal({ type, title, message, onConfirm, onCancel, show 
               </button>
               <button
                 onClick={onCancel}
-                className="w-full sm:w-auto px-6 py-3 bg-white text-gray-700 font-semibold rounded-lg border border-gray-300 hover:bg-gray-100 transition"
+                className="w-full sm:w-auto px-6 py-3 bg-card text-foreground font-semibold rounded-lg border border-secondary/30 hover:bg-secondary-light dark:hover:bg-secondary-dark/20 transition"
               >
                 Cancelar
               </button>

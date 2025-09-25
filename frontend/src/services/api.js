@@ -68,6 +68,12 @@ export const uploadFile = async (file) => {
   return response.data;
 };
 
+// NOVA FUNÇÃO para verificar o estado do relatório
+export const fetchReportStatus = async (reportId) => {
+  const { data } = await apiClient.get(`/relatorios/status/${reportId}`);
+  return data;
+}
+
 export const deleteAllClients = async () => {
     const response = await apiClient.delete('/clients/all');
     return response.data;
@@ -77,4 +83,3 @@ export const deleteSelectedClients = async (ids) => {
     const response = await apiClient.delete('/clients', { data: { ids } });
     return response.data;
 };
-
