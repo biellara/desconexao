@@ -102,7 +102,7 @@ export const deleteSelectedClients = async (ids) => {
     return response.data;
 };
 
-export const createErpAttendance = async (clientName) => {
-    const response = await apiClient.post('/erp/create-attendance', { client_name: clientName });
+export const findErpClient = async (clientName) => {
+    const response = await apiClient.post('/erp/find-client', { client_name: clientName });
     return response.data;
 };

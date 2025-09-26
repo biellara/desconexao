@@ -297,21 +297,36 @@ export default function DashboardPage() {
     setModalState({ isOpen: false });
   };
 
-  const handleAbrirAtendimento = async (clientName) => {
+const handleAbrirAtendimento = async (clientName) => {
     if (!clientName) {
-      showErrorToast("Nome do cliente não encontrado para criar atendimento.");
+      showErrorToast("Nome do cliente inválido.");
       return;
     }
+
     const toastId = "erp-toast";
-    showLoadingToast(`Criando atendimento para ${clientName}...`, { id: toastId });
+    showLoadingToast(`Buscando ${clientName} no ERP...`, { id: toastId });
+
     try {
-      const result = await createErpAttendance(clientName);
-      toast.dismiss(toastId);
-      showSuccessToast(result.message, { id: toastId });
-      // Não há necessidade de recarregar os dados, pois a ação é externa.
+      // 1. Chama o backend para obter o ID do cliente
+      const erpClient = await findErpClient(clientName);
+      const { client_id } = erpClient;
+
+      // 2. Constrói a URL final usando a variável de ambiente
+      const erpUrlPattern = import.meta.env.VITE_ERP_CLIENT_URL_PATTERN;
+      if (!erpUrlPattern) {
+        throw new Error("URL do ERP não configurada no frontend.");
+      }
+      
+      const finalUrl = `${erpUrlPattern}${client_id}`;
+      
+      toast.success(`Cliente encontrado! Redirecionando...`, { id: toastId });
+
+      // 3. Abre a URL em uma nova aba
+      window.open(finalUrl, '_blank', 'noopener,noreferrer');
+
     } catch (error) {
       toast.dismiss(toastId);
-      const errorMessage = error.response?.data?.detail || "Não foi possível criar o atendimento.";
+      const errorMessage = error.response?.data?.detail || "Não foi possível encontrar o cliente no ERP.";
       showErrorToast(errorMessage, { id: toastId });
     }
   };
