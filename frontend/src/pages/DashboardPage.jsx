@@ -11,7 +11,7 @@ import {
   fetchClientsByCityStats,
   fetchOfflineHistoryStats,
   fetchReportStatus,
-  findErpClient
+  findErpClient,
 } from "../services/api.js";
 import KpiCard from "../components/KpiCard.jsx";
 import UploadCard from "../components/UploadCard.jsx";
@@ -33,10 +33,9 @@ import {
   XMarkIcon,
   CheckCircleIcon,
   XCircleIcon,
-  SpinnerIcon
+  SpinnerIcon,
 } from "../components/Icons.jsx";
 
-// ... (função exportToCSV continua a mesma) ...
 const exportToCSV = (clients) => {
   const headers =
     "Nome Cliente,Serial ONU,OLT/Região,Cidade,Horas Offline,Data Desconexão";
@@ -49,7 +48,8 @@ const exportToCSV = (clients) => {
       )}"`
   );
   const csvContent =
-    "data:text/csv;charset=utf-8," + encodeURIComponent([headers, ...rows].join("\n"));
+    "data:text/csv;charset=utf-8," +
+    encodeURIComponent([headers, ...rows].join("\n"));
   const link = document.createElement("a");
   link.setAttribute("href", csvContent);
   link.setAttribute(
@@ -61,29 +61,37 @@ const exportToCSV = (clients) => {
   document.body.removeChild(link);
 };
 
-// --- COMPONENTE DE AVISO ATUALIZADO ---
-const CustomToast = ({ t, message, type = 'success' }) => {
+const CustomToast = ({ t, message, type = "success" }) => {
   const isVisible = t.visible;
-  const baseClasses = "max-w-md w-full bg-card text-card-foreground shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 transition-all duration-300 ease-in-out";
-  const animationClasses = isVisible ? 'animate-in slide-in-from-bottom-5' : 'animate-out slide-out-to-bottom-5';
-  
-  const iconColor = type === 'success' ? 'text-green-500' : 'text-red-500';
+  const baseClasses =
+    "max-w-md w-full bg-card text-card-foreground shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 transition-all duration-300 ease-in-out";
+  const animationClasses = isVisible
+    ? "animate-in slide-in-from-bottom-5"
+    : "animate-out slide-out-to-bottom-5";
+
+  const iconColor = type === "success" ? "text-green-500" : "text-red-500";
 
   return (
     <div className={`${baseClasses} ${animationClasses}`}>
       <div className="flex-1 w-0 p-4">
         <div className="flex items-start">
           <div className="flex-shrink-0 pt-0.5">
-            {type === 'loading' && <SpinnerIcon className="h-6 w-6 text-primary" />}
-            {type === 'success' && <CheckCircleIcon className={`h-6 w-6 ${iconColor}`} />}
-            {type === 'error' && <XCircleIcon className={`h-6 w-6 ${iconColor}`} />}
+            {type === "loading" && (
+              <SpinnerIcon className="h-6 w-6 text-primary" />
+            )}
+            {type === "success" && (
+              <CheckCircleIcon className={`h-6 w-6 ${iconColor}`} />
+            )}
+            {type === "error" && (
+              <XCircleIcon className={`h-6 w-6 ${iconColor}`} />
+            )}
           </div>
           <div className="ml-3 flex-1">
             <p className="text-sm font-medium">{message}</p>
           </div>
         </div>
       </div>
-      {type !== 'loading' && (
+      {type !== "loading" && (
         <div className="flex border-l border-secondary/20 dark:border-secondary-dark/30">
           <button
             onClick={() => toast.dismiss(t.id)}
@@ -97,9 +105,6 @@ const CustomToast = ({ t, message, type = 'success' }) => {
   );
 };
 
-console.log("O componente DashboardPage.jsx começou a ser renderizado.");
-
-
 export default function DashboardPage() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("theme") || "light"
@@ -111,12 +116,10 @@ export default function DashboardPage() {
   const [offlineHistoryData, setOfflineHistoryData] = useState([]);
   const [kpiStats, setKpiStats] = useState({});
   const [totalCount, setTotalCount] = useState(0);
-
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [modalState, setModalState] = useState({ isOpen: false });
-
   const [searchTerm, setSearchTerm] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -135,34 +138,34 @@ export default function DashboardPage() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
+  const toggleTheme = () => setTheme(theme === "light" ? "dark" : "light");
+  const showSuccessToast = (message, options) =>
+    toast.custom(
+      (t) => <CustomToast t={t} message={message} type="success" />,
+      { ...options, duration: 5000 }
+    );
+  const showErrorToast = (message, options) =>
+    toast.custom((t) => <CustomToast t={t} message={message} type="error" />, {
+      ...options,
+      duration: 5000,
+    });
+  const showLoadingToast = (message, options) =>
+    toast.custom(
+      (t) => <CustomToast t={t} message={message} type="loading" />,
+      { ...options, duration: Infinity }
+    );
 
-  const showSuccessToast = (message, options) => {
-    toast.custom((t) => <CustomToast t={t} message={message} type="success" />, { ...options, duration: 5000 });
-  };
-  
-  const showErrorToast = (message, options) => {
-    toast.custom((t) => <CustomToast t={t} message={message} type="error" />, { ...options, duration: 5000 });
-  };
-  
-  const showLoadingToast = (message, options) => {
-    toast.custom((t) => <CustomToast t={t} message={message} type="loading" />, { ...options, duration: Infinity });
-  };
-  
   const loadClients = useCallback(async () => {
     setIsLoading(true);
-    const params = {
-      page: currentPage,
-      limit: itemsPerPage,
-      searchTerm: debouncedSearchTerm,
-      regionFilter,
-      sortKey: sortConfig.key,
-      sortDirection: sortConfig.direction,
-    };
     try {
-      const { data, error, count } = await fetchClients(params);
+      const { data, error, count } = await fetchClients({
+        page: currentPage,
+        limit: itemsPerPage,
+        searchTerm: debouncedSearchTerm,
+        regionFilter,
+        sortKey: sortConfig.key,
+        sortDirection: sortConfig.direction,
+      });
       if (error) throw new Error(error.message);
       setClients(data || []);
       setTotalCount(count || 0);
@@ -172,7 +175,13 @@ export default function DashboardPage() {
       setIsLoading(false);
       setSelectedIds([]);
     }
-  }, [currentPage, itemsPerPage, debouncedSearchTerm, regionFilter, sortConfig]);
+  }, [
+    currentPage,
+    itemsPerPage,
+    debouncedSearchTerm,
+    regionFilter,
+    sortConfig,
+  ]);
 
   const loadDashboardData = useCallback(async () => {
     setIsStatsLoading(true);
@@ -197,51 +206,60 @@ export default function DashboardPage() {
   useEffect(() => {
     loadClients();
   }, [loadClients]);
-
   useEffect(() => {
     loadDashboardData();
   }, []);
-
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearchTerm, regionFilter, itemsPerPage]);
-  
+
   const refreshAllData = useCallback(() => {
     loadClients();
     loadDashboardData();
   }, [loadClients, loadDashboardData]);
 
-  const monitorReportStatus = useCallback((reportId, toastId) => {
-    const interval = setInterval(async () => {
-      try {
-        const { status, detalhes_erro } = await fetchReportStatus(reportId);
-        if (status === 'COMPLETED') {
+  const monitorReportStatus = useCallback(
+    (reportId, toastId) => {
+      const interval = setInterval(async () => {
+        try {
+          const { status, detalhes_erro } = await fetchReportStatus(reportId);
+          if (status === "COMPLETED") {
+            clearInterval(interval);
+            toast.dismiss(toastId);
+            showSuccessToast("Relatório processado e dados atualizados!", {
+              id: toastId,
+            });
+            refreshAllData();
+          } else if (status === "FAILED") {
+            clearInterval(interval);
+            toast.dismiss(toastId);
+            showErrorToast(
+              `Falha no processamento: ${detalhes_erro || "Erro desconhecido"}`,
+              { id: toastId }
+            );
+          }
+        } catch (error) {
           clearInterval(interval);
           toast.dismiss(toastId);
-          showSuccessToast('Relatório processado e dados atualizados!', { id: toastId });
-          refreshAllData();
-        } else if (status === 'FAILED') {
-          clearInterval(interval);
-          toast.dismiss(toastId);
-          showErrorToast(`Falha no processamento: ${detalhes_erro || 'Erro desconhecido'}`, { id: toastId });
+          showErrorToast(
+            "Não foi possível verificar o estado do processamento.",
+            { id: toastId }
+          );
         }
-      } catch (error) {
+      }, 5000);
+      setTimeout(() => {
         clearInterval(interval);
-        toast.dismiss(toastId);
-        showErrorToast('Não foi possível verificar o estado do processamento.', { id: toastId });
-      }
-    }, 5000);
-
-    setTimeout(() => {
-      clearInterval(interval);
-    }, 120000);
-
-  }, [refreshAllData]);
+      }, 120000);
+    },
+    [refreshAllData]
+  );
 
   const handleUpload = async (file) => {
     setIsUploading(true);
     const toastId = "upload-toast";
-    showLoadingToast("A enviar... O processamento pode demorar um pouco.", { id: toastId });
+    showLoadingToast("A enviar... O processamento pode demorar um pouco.", {
+      id: toastId,
+    });
     try {
       const response = await uploadFile(file);
       monitorReportStatus(response.relatorio_id, toastId);
@@ -297,9 +315,13 @@ export default function DashboardPage() {
     setModalState({ isOpen: false });
   };
 
-const handleAbrirAtendimento = async (clientName) => {
+  const handleAbrirAtendimento = async (clientName) => {
+    console.log(
+      `[DashboardPage] Tentando abrir atendimento para: "${clientName}"`
+    );
     if (!clientName) {
       showErrorToast("Nome do cliente inválido.");
+      console.error("[DashboardPage] Nome do cliente é nulo ou indefinido.");
       return;
     }
 
@@ -309,24 +331,31 @@ const handleAbrirAtendimento = async (clientName) => {
     try {
       // 1. Chama o backend para obter o ID do cliente
       const erpClient = await findErpClient(clientName);
+      console.log("[DashboardPage] Resposta da API recebida:", erpClient);
       const { client_id } = erpClient;
 
       // 2. Constrói a URL final usando a variável de ambiente
       const erpUrlPattern = import.meta.env.VITE_ERP_CLIENT_URL_PATTERN;
       if (!erpUrlPattern) {
+        console.error(
+          "[DashboardPage] VITE_ERP_CLIENT_URL_PATTERN não está configurada no .env"
+        );
         throw new Error("URL do ERP não configurada no frontend.");
       }
-      
+
       const finalUrl = `${erpUrlPattern}${client_id}`;
-      
+      console.log(`[DashboardPage] URL final construída: ${finalUrl}`);
+
       toast.success(`Cliente encontrado! Redirecionando...`, { id: toastId });
 
       // 3. Abre a URL em uma nova aba
-      window.open(finalUrl, '_blank', 'noopener,noreferrer');
-
+      window.open(finalUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.dismiss(toastId);
-      const errorMessage = error.response?.data?.detail || "Não foi possível encontrar o cliente no ERP.";
+      const errorMessage =
+        error.response?.data?.detail ||
+        "Não foi possível encontrar o cliente no ERP.";
+      console.error("[DashboardPage] Erro ao buscar cliente no ERP:", error);
       showErrorToast(errorMessage, { id: toastId });
     }
   };
@@ -345,9 +374,7 @@ const handleAbrirAtendimento = async (clientName) => {
       <div className="min-h-screen bg-background text-foreground p-4 sm:p-8 font-sans">
         <div className="max-w-7xl mx-auto space-y-8">
           <Header theme={theme} onThemeToggle={toggleTheme} />
-
           <main className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            
             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard
                 title="Total de Clientes Críticos"
@@ -357,34 +384,45 @@ const handleAbrirAtendimento = async (clientName) => {
               />
               <KpiCard
                 title="Novos Casos (24h)"
-                value={isStatsLoading ? "..." : kpiStats.new_critical_cases_24h ?? '0'}
+                value={
+                  isStatsLoading
+                    ? "..."
+                    : kpiStats.new_critical_cases_24h ?? "0"
+                }
                 icon={<UserPlusIcon />}
                 isLoading={isStatsLoading}
               />
               <KpiCard
                 title="OLT Mais Crítica"
-                value={isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"}
+                value={
+                  isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"
+                }
                 icon={<ServerIcon />}
                 isLoading={isStatsLoading}
               />
               <KpiCard
                 title="Caso Mais Antigo"
-                value={isStatsLoading ? "..." : `${kpiStats.oldest_case_days || 0} dias`}
+                value={
+                  isStatsLoading
+                    ? "..."
+                    : `${kpiStats.oldest_case_days || 0} dias`
+                }
                 icon={<CalendarIcon />}
                 isLoading={isStatsLoading}
               />
             </div>
-            
             <div className="lg:col-span-4">
               <UploadCard onUpload={handleUpload} isLoading={isUploading} />
             </div>
-
             <div className="lg:col-span-4">
               <ChartContainer
                 title="Histórico de Novos Clientes Offline"
                 isLoading={isStatsLoading}
               >
-                <OfflineHistoryChart chartData={offlineHistoryData} theme={theme}/>
+                <OfflineHistoryChart
+                  chartData={offlineHistoryData}
+                  theme={theme}
+                />
               </ChartContainer>
             </div>
             <div className="lg:col-span-4">
@@ -392,12 +430,14 @@ const handleAbrirAtendimento = async (clientName) => {
                 title="Clientes Offline por Cidade"
                 isLoading={isStatsLoading}
               >
-                <ClientsByCityChart chartData={clientsByCityData} theme={theme} />
+                <ClientsByCityChart
+                  chartData={clientsByCityData}
+                  theme={theme}
+                />
               </ChartContainer>
             </div>
-
             <div className="lg:col-span-4 bg-card text-card-foreground p-6 rounded-2xl shadow-lg">
-               <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4">
+              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4">
                 <h3 className="text-xl font-bold">Lista de Clientes</h3>
                 <div className="flex flex-col sm:flex-row w-full xl:w-auto items-center gap-2">
                   <div className="relative w-full sm:w-auto">
@@ -422,7 +462,7 @@ const handleAbrirAtendimento = async (clientName) => {
                       </option>
                     ))}
                   </select>
-                   <select
+                  <select
                     value={itemsPerPage}
                     onChange={(e) => setItemsPerPage(Number(e.target.value))}
                     className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
@@ -502,4 +542,3 @@ const handleAbrirAtendimento = async (clientName) => {
     </>
   );
 }
-

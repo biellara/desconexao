@@ -17,7 +17,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Importação dos Módulos de Serviço ---
-# Ajuste nos imports para refletir a estrutura correta de pacotes
 from backend.services.supabase_client import supabase
 from backend.services.file_processor import processar_relatorio
 
@@ -31,7 +30,6 @@ if not ERP_TOKEN:
 class ErpRequest(BaseModel):
     client_name: str = Field(..., example="GABRIEL DIAS DE LARA")
 
-# NOVO MODELO DE RESPOSTA para o ID do cliente
 class ErpClientResponse(BaseModel):
     client_id: int = Field(..., example=337)
     client_name: str
@@ -60,12 +58,12 @@ class ReportStatusResponse(BaseModel):
 app = FastAPI(
     title="Dashboard ONUs API",
     description="API para processar relatórios de ONUs e identificar clientes offline.",
-    version="1.3.0" # Versão atualizada
+    version="1.3.0"
 )
 
 origins = [
     "https://desconexao.vercel.app",
-    "http://localhost:5173",
+    "http://localhost:3000",
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -107,7 +105,6 @@ async def find_erp_client(request: ErpRequest):
                 
             logger.info(f"Cliente '{request.client_name}' encontrado com ID: {client_id}")
             
-            # Retorna o ID e o nome para o frontend
             return ErpClientResponse(client_id=client_id, client_name=request.client_name)
 
     except httpx.HTTPStatusError as e:
@@ -119,7 +116,7 @@ async def find_erp_client(request: ErpRequest):
         raise HTTPException(status_code=500, detail=f"Ocorreu um erro inesperado na integração.")
 
 
-# --- Demais Rotas (com correção de erro no KPI) ---
+# --- Demais Rotas ---
 
 @app.get("/", tags=["Status"])
 def read_root():
@@ -255,4 +252,9 @@ def delete_selected_clients(request: DeleteRequest):
     except Exception as e:
         logger.error(f"Erro ao excluir clientes selecionados: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 

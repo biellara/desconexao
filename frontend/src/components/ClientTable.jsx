@@ -175,7 +175,10 @@ export default function ClientTable({
                 </td>
                 <td className="px-6 py-4 text-center">
                   <button
-                    onClick={() => onAbrirAtendimento(client.nome_cliente)}
+                    onClick={() => {
+                      console.log(`[ClientTable] Botão 'Abrir Atendimento' clicado para: "${client.nome_cliente}"`);
+                      onAbrirAtendimento(client.nome_cliente);
+                    }}
                     title={`Abrir atendimento para ${client.nome_cliente}`}
                     className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed"
                     disabled={isLoading}
@@ -221,4 +224,5 @@ export default function ClientTable({
     </>
   );
 }
+
 

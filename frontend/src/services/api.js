@@ -6,27 +6,22 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const apiClient = axios.create({
-  // CORREÇÃO: Removido o prefixo '/api'. 
-  // A baseURL agora aponta diretamente para a URL do seu backend no Railway.
   baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000',
 });
 
-// Interceptor para capturar e logar erros de forma mais detalhada
+// Interceptor para logs
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error("Erro na chamada da API:", {
       message: error.message,
       url: error.config.url,
-      method: error.config.method,
-      baseURL: error.config.baseURL,
       responseStatus: error.response?.status,
       responseData: error.response?.data,
     });
     return Promise.reject(error);
   }
 );
-
 
 export const fetchClients = async (params = {}) => {
   const { 
@@ -102,7 +97,11 @@ export const deleteSelectedClients = async (ids) => {
     return response.data;
 };
 
+// --- FUNÇÃO ATUALIZADA PARA A OPÇÃO 1 ---
 export const findErpClient = async (clientName) => {
+    console.log(`[api.js] Enviando requisição para /erp/find-client com o nome: "${clientName}"`);
     const response = await apiClient.post('/erp/find-client', { client_name: clientName });
+    console.log("[api.js] Resposta do backend recebida:", response.data);
     return response.data;
 };
+
