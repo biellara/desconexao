@@ -17,8 +17,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Importação dos Módulos de Serviço ---
-from services.supabase_client import supabase
-from services.file_processor import processar_relatorio
+from backend.services.supabase_client import supabase
+from backend.services.file_processor import processar_relatorio
 
 # --- Carregar o Token do ERP do ambiente ---
 ERP_TOKEN = os.getenv("ERP_API_TOKEN")
