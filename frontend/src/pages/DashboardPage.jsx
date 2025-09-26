@@ -11,7 +11,7 @@ import {
   fetchClientsByCityStats,
   fetchOfflineHistoryStats,
   fetchReportStatus,
-  createErpAttendance
+  findErpClient
 } from "../services/api.js";
 import KpiCard from "../components/KpiCard.jsx";
 import UploadCard from "../components/UploadCard.jsx";

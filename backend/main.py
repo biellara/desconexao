@@ -42,7 +42,6 @@ class DeleteRequest(BaseModel):
 class MessageResponse(BaseModel):
     message: str = Field(..., example="Operação bem-sucedida.")
 
-# ... (outros modelos Pydantic sem alteração) ...
 class UploadResponse(BaseModel):
     message: str
     relatorio_id: int
@@ -112,7 +111,7 @@ async def find_erp_client(request: ErpRequest):
             return ErpClientResponse(client_id=client_id, client_name=request.client_name)
 
     except httpx.HTTPStatusError as e:
-        error_body = e.response.text
+        error_body = e.response.text or "Sem detalhes"
         logger.error(f"Erro de comunicação com a API do ERP ({e.response.status_code}): {error_body}")
         raise HTTPException(status_code=e.response.status_code, detail=f"Erro ao comunicar com o ERP.")
     except Exception as e:
@@ -120,49 +119,140 @@ async def find_erp_client(request: ErpRequest):
         raise HTTPException(status_code=500, detail=f"Ocorreu um erro inesperado na integração.")
 
 
-# --- Demais Rotas (sem alterações) ---
+# --- Demais Rotas (com correção de erro no KPI) ---
 
 @app.get("/", tags=["Status"])
 def read_root():
     return {"status": "API online"}
 
-# ... (todas as outras rotas como /upload, /stats/*, /clients/* continuam aqui sem alterações)
 def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str):
-    # ... (código existente)
-    pass
+    logger.info(f"Iniciando processamento em background para o relatório ID: {relatorio_id}")
+    try:
+        supabase.table('relatorios').update({"status": "PROCESSING"}).eq('id', relatorio_id).execute()
+        
+        df = pd.read_excel(io.BytesIO(contents)) if filename.endswith(('.xlsx', '.xls')) else pd.read_csv(
+            io.BytesIO(contents), sep=None, engine='python', encoding='latin-1'
+        )
+        
+        df.columns = (
+            df.columns.str.strip().str.lower()
+            .str.replace(" ", "_").str.replace("á", "a").str.replace("ã", "a")
+            .str.replace("â", "a").str.replace("é", "e").str.replace("ê", "e")
+            .str.replace("í", "i").str.replace("ó", "o").str.replace("ô", "o")
+            .str.replace("õ", "o").str.replace("ú", "u").str.replace("ç", "c")
+        )
+
+        required = ["status"]
+        alternatives = ["ultima_comunicacao", "ultima_alteracao_de_status"]
+
+        if not all(col in df.columns for col in required):
+            raise Exception("Coluna obrigatória 'Status' não encontrada no arquivo.")
+        if not any(col in df.columns for col in alternatives):
+            raise Exception("Nenhuma coluna de data encontrada ('Ultima Comunicacao' ou 'Última Alteração de Status').")
+        
+        clientes_para_inserir = processar_relatorio(df, relatorio_id)
+        
+        if clientes_para_inserir:
+            logger.info(f"Encontrados {len(clientes_para_inserir)} clientes offline para inserir no DB.")
+            insert_res = supabase.table('clientes_off').insert(clientes_para_inserir).execute()
+            if hasattr(insert_res, 'error') and insert_res.error:
+                raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error}")
+        else:
+            logger.info(f"Nenhum cliente com status 'LOSS' encontrado no relatório ID: {relatorio_id}.")
+        
+        supabase.table('relatorios').update({"status": "COMPLETED"}).eq('id', relatorio_id).execute()
+        logger.info(f"Processamento do relatório ID: {relatorio_id} concluído com sucesso.")
+
+    except Exception as e:
+        error_detail = f"Erro ao processar o arquivo: {str(e)}"
+        logger.error(f"Falha no processamento do relatório (ID: {relatorio_id}). Erro: {error_detail}", exc_info=True)
+        supabase.table('relatorios').update(
+            {"status": "FAILED", "detalhes_erro": error_detail}
+        ).eq('id', relatorio_id).execute()
+
 
 @app.get("/relatorios/status/{relatorio_id}", response_model=ReportStatusResponse, tags=["Relatórios"])
 def get_report_status(relatorio_id: int):
-    # ... (código existente)
-    pass
+    try:
+        res = supabase.table("relatorios").select("status, detalhes_erro").eq("id", relatorio_id).single().execute()
+        if res.data:
+            return res.data
+        raise HTTPException(status_code=404, detail="Relatório não encontrado.")
+    except Exception as e:
+        logger.error(f"Erro ao buscar status do relatório {relatorio_id}: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar o estado do relatório.")
 
 @app.post("/upload", response_model=UploadResponse, tags=["Relatórios"], summary="Upload de novo relatório")
 async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    # ... (código existente)
-    pass
+    if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
+        raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Use Excel ou CSV.")
+    
+    contents = await file.read()
+    
+    insert_res = supabase.table('relatorios').insert({
+        "nome_arquivo": file.filename,
+        "status": "PENDING"
+    }).execute()
+
+    if not insert_res.data:
+        raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
+    
+    relatorio_id = insert_res.data[0]['id']
+    background_tasks.add_task(processar_arquivo_em_background, relatorio_id, contents, file.filename)
+    
+    return {"message": "Arquivo recebido! O processamento foi iniciado.", "relatorio_id": relatorio_id}
 
 @app.get("/stats/kpis", response_model=NewKpiStatsResponse, tags=["Estatísticas"], summary="Busca os KPIs principais")
 def get_main_kpis():
-    # ... (código existente)
-    pass
+    try:
+        response = supabase.rpc('get_new_dashboard_kpis').execute()
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        
+        logger.warning("A RPC 'get_new_dashboard_kpis' não retornou dados. Usando valores padrão.")
+        return NewKpiStatsResponse(new_critical_cases_24h=0, most_critical_olt="N/A", oldest_case_days=0)
+        
+    except Exception as e:
+        logger.error(f"Erro ao buscar KPIs em /stats/kpis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro interno ao buscar KPIs.")
 
 @app.get("/stats/clients-by-city", tags=["Estatísticas"])
 def get_clients_by_city():
-    # ... (código existente)
-    pass
+    try:
+        response = supabase.rpc('get_clients_by_city').execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Erro em /stats/clients-by-city: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao buscar dados por cidade.")
 
 @app.get("/stats/offline-history", tags=["Estatísticas"])
 def get_offline_history():
-    # ... (código existente)
-    pass
+    try:
+        response = supabase.rpc('get_offline_history').execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Erro em /stats/offline-history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao buscar histórico.")
 
 @app.delete("/clients/all", response_model=MessageResponse, tags=["Clientes"])
 def delete_all_clients():
-    # ... (código existente)
-    pass
+    try:
+        delete_res = supabase.table('clientes_off').delete().neq('id', 0).execute()
+        count = len(delete_res.data)
+        return {"message": f"{count} registros foram excluídos com sucesso."}
+    except Exception as e:
+        logger.error(f"Erro ao excluir todos os clientes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
 
 @app.delete("/clients", response_model=MessageResponse, tags=["Clientes"])
 def delete_selected_clients(request: DeleteRequest):
-    # ... (código existente)
-    pass
+    if not request.ids:
+        raise HTTPException(status_code=400, detail="Nenhum ID foi fornecido.")
+    try:
+        delete_res = supabase.table('clientes_off').delete().in_('id', request.ids).execute()
+        count = len(delete_res.data)
+        return {"message": f"{count} registros selecionados foram excluídos."}
+    except Exception as e:
+        logger.error(f"Erro ao excluir clientes selecionados: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
 
