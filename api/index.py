@@ -57,9 +57,15 @@ app = FastAPI(
     version="1.2.1"
 )
 
+# Lista de domínios autorizados a aceder à sua API
+origins = [
+    "https://desconexao.vercel.app",
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

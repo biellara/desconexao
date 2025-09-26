@@ -97,6 +97,8 @@ const CustomToast = ({ t, message, type = 'success' }) => {
   );
 };
 
+console.log("O componente DashboardPage.jsx começou a ser renderizado.");
+
 
 export default function DashboardPage() {
   const [theme, setTheme] = useState(
