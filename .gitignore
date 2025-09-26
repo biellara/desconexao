@@ -1,5 +1,21 @@
-venv/
+# Arquivos de ambiente - NUNCA comitar
 .env
+.env.*
+*.local
+
+# Dependências e Build
+## Backend (Python)
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+## Frontend (Node.js / Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.npm
+frontend/coverage/
 
 # Logs
 logs
@@ -10,15 +26,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# Arquivos de Editor e Sistema Operacional
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*

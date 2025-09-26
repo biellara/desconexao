@@ -82,8 +82,6 @@
 
 ---
 
-@@ -83,16 +74,10 @@
-
 ### Segurança e Controle  
 - [ ] **Implementar Autenticação de Usuários**  
   - [ ] Utilizar o `Supabase Auth` para criar um sistema de login seguro.  
