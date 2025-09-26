@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Pega a URL e a Chave do Supabase a partir das variáveis de ambiente
-url: str = os.environ.get("RAILWAY_URL")
+url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 
 # Validação para garantir que as variáveis foram carregadas
