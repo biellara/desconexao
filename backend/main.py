@@ -61,13 +61,14 @@ app = FastAPI(
 origins = [
     "https://desconexao.vercel.app",
     "http://localhost:5173",
+    "http://localhost:3000"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE", "PUT"],
     allow_headers=["*"],
 )
 
@@ -266,3 +267,7 @@ def delete_selected_clients(request: DeleteRequest):
         logger.error(f"Erro ao excluir clientes selecionados: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
 
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
