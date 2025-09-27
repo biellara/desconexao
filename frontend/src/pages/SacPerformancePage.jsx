@@ -99,7 +99,6 @@ export default function SacPerformancePage() {
               isLoading={isLoading}
             />
           </div>
-          
           <div>
             <ChartContainer title="Performance dos Agentes" isLoading={isLoading}>
               <AgentPerformanceChart chartData={agentData} theme={theme} />
