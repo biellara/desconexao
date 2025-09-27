@@ -85,9 +85,16 @@ export const fetchOfflineHistoryStats = async () => {
 export const uploadFile = async (file, reportType) => {
   const formData = new FormData();
   formData.append('file', file);
-  // Envia o tipo de relatório como um campo do formulário
-  formData.append('report_type', reportType); 
+  formData.append('report_type', reportType);
+
+  console.log("[uploadFile] Preparando envio:", {
+    fileName: file.name,
+    reportType
+  });
+
   const response = await apiClient.post('/upload', formData);
+
+  console.log("[uploadFile] Resposta recebida:", response.data);
   return response.data;
 };
 

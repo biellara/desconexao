@@ -4,11 +4,13 @@ import { UploadIcon } from './Icons.jsx';
 
 export default function UploadCard({ onUpload, isLoading }) {
   const [selectedFile, setSelectedFile] = useState(null);
-  const [reportType, setReportType] = useState('desconexao'); 
+  const [reportType, setReportType] = useState(''); // começa vazio
+  const [errorMessage, setErrorMessage] = useState('');
 
   const onDrop = useCallback(acceptedFiles => {
     if (acceptedFiles && acceptedFiles.length > 0) {
       setSelectedFile(acceptedFiles[0]);
+      setErrorMessage(''); // limpa erro se selecionar arquivo
     }
   }, []);
 
@@ -23,12 +25,22 @@ export default function UploadCard({ onUpload, isLoading }) {
   });
 
   const handleSubmit = (event) => {
-    event.preventDefault();
-    if (selectedFile) {
-      onUpload(selectedFile, reportType); 
-      setSelectedFile(null);
-    }
-  };
+  event.preventDefault();
+
+  if (!reportType) {
+    setErrorMessage('Por favor, selecione o tipo de relatório antes de enviar.');
+    console.warn("[UploadCard] Tentativa de envio sem selecionar tipo de relatório");
+    return;
+  }
+
+  if (selectedFile) {
+    console.log("[UploadCard] Enviando arquivo:", selectedFile.name, "com tipo:", reportType);
+    onUpload(selectedFile, reportType);
+    setSelectedFile(null);
+    setReportType('');
+    setErrorMessage('');
+  }
+};
 
   return (
     <div className="bg-card text-card-foreground p-6 rounded-2xl shadow-lg h-full flex flex-col">
@@ -41,15 +53,21 @@ export default function UploadCard({ onUpload, isLoading }) {
           <select
             id="reportType"
             value={reportType}
-            onChange={(e) => setReportType(e.target.value)}
+            onChange={(e) => {
+              setReportType(e.target.value);
+              setErrorMessage('');
+            }}
             className="w-full px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
             disabled={isLoading}
           >
+            <option value="">Selecione um tipo de relatório...</option>
             <option value="desconexao">Clientes Offline (Desconexão)</option>
-            {/* CORREÇÃO: Opções agora estão habilitadas */}
             <option value="monitoria">Monitoria de Qualidade</option>
             <option value="sac">Performance SAC</option>
           </select>
+          {errorMessage && (
+            <p className="text-red-500 text-sm mt-2">{errorMessage}</p>
+          )}
         </div>
 
         <div
@@ -70,7 +88,7 @@ export default function UploadCard({ onUpload, isLoading }) {
         
         <button 
           type="submit" 
-          disabled={!selectedFile || isLoading}
+          disabled={!selectedFile || !reportType || isLoading}
           className="w-full bg-primary text-white font-bold py-3 mt-4 rounded-lg hover:bg-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed transition-all duration-300 shadow-md hover:shadow-lg"
         >
           {isLoading ? 'Processando...' : 'Processar Arquivo'}
@@ -79,4 +97,3 @@ export default function UploadCard({ onUpload, isLoading }) {
     </div>
   );
 }
-

@@ -133,9 +133,7 @@ export default function ClientesCriticosPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.ceil(totalCount / itemsPerPage);
-  
-  // O controle de tema foi movido para o MainLayout.jsx
-  
+
   const showSuccessToast = (message, options) =>
     toast.custom(
       (t) => <CustomToast t={t} message={message} type="success" />,
@@ -253,14 +251,19 @@ export default function ClientesCriticosPage() {
     [refreshAllData]
   );
 
-  const handleUpload = async (file) => {
+  // CORRIGIDO: agora recebe file + reportType
+  const handleUpload = async (file, reportType) => {
     setIsUploading(true);
     const toastId = "upload-toast";
     showLoadingToast("A enviar... O processamento pode demorar um pouco.", {
       id: toastId,
     });
     try {
-      const response = await uploadFile(file);
+      console.log("[ClientesCriticosPage] Upload iniciado:", { file: file.name, reportType });
+
+      const response = await uploadFile(file, reportType); // agora passa reportType
+      console.log("[ClientesCriticosPage] Resposta upload:", response);
+
       monitorReportStatus(response.relatorio_id, toastId);
     } catch (error) {
       toast.dismiss(toastId);
@@ -360,129 +363,129 @@ export default function ClientesCriticosPage() {
         <p className="text-secondary mb-6">Monitoramento de desconexões e clientes críticos.</p>
 
         <main className="space-y-6">
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <KpiCard
-                title="Total de Clientes Offline"
-                value={isStatsLoading ? "..." : totalCount}
-                icon={<UsersIcon />}
-                isLoading={isStatsLoading}
-              />
-              <KpiCard
-                title="Novos Casos (24h)"
-                value={isStatsLoading ? "..." : kpiStats.new_critical_cases_24h ?? "0"}
-                icon={<UserPlusIcon />}
-                isLoading={isStatsLoading}
-              />
-              <KpiCard
-                title="OLT Mais Crítica"
-                value={isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"}
-                icon={<ServerIcon />}
-                isLoading={isStatsLoading}
-              />
-              <KpiCard
-                title="Caso Mais Antigo"
-                value={isStatsLoading ? "..." : `${kpiStats.oldest_case_days || 0} dias`}
-                icon={<CalendarIcon />}
-                isLoading={isStatsLoading}
-              />
-            </div>
-            <div>
-              <UploadCard onUpload={handleUpload} isLoading={isUploading} />
-            </div>
-            <div>
-              <ChartContainer title="Histórico de Novos Clientes Offline" isLoading={isStatsLoading}>
-                <OfflineHistoryChart chartData={offlineHistoryData} theme={theme} />
-              </ChartContainer>
-            </div>
-            <div>
-              <ChartContainer title="Clientes Offline por Cidade" isLoading={isStatsLoading}>
-                <ClientsByCityChart chartData={clientsByCityData} theme={theme} />
-              </ChartContainer>
-            </div>
-            <div className="bg-card text-card-foreground p-6 rounded-2xl shadow-lg">
-              <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4">
-                <h3 className="text-xl font-bold">Lista de Clientes</h3>
-                <div className="flex flex-col sm:flex-row w-full xl:w-auto items-center gap-2">
-                  <div className="relative w-full sm:w-auto">
-                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary" />
-                    <input
-                      type="text"
-                      placeholder="Buscar por nome ou serial..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 pr-4 py-2 w-full sm:w-64 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
-                    />
-                  </div>
-                  <div className="relative w-full sm:w-auto">
-                    <ClockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary" />
-                    <input
-                      type="number"
-                      placeholder="Horas mín."
-                      value={hoursFilter}
-                      onChange={(e) => setHoursFilter(Number(e.target.value))}
-                      className="pl-10 pr-4 py-2 w-full sm:w-40 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
-                      title="Filtrar por horas mínimas offline"
-                    />
-                  </div>
-                  <select
-                    value={regionFilter}
-                    onChange={(e) => setRegionFilter(e.target.value)}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
-                  >
-                    <option value="">Todas as Regiões</option>
-                    {uniqueRegions.map((r) => (<option key={r} value={r}>{r}</option>))}
-                  </select>
-                  <select
-                    value={itemsPerPage}
-                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
-                  >
-                    <option value={10}>10 por página</option>
-                    <option value={25}>25 por página</option>
-                    <option value={50}>50 por página</option>
-                    <option value={100}>100 por página</option>
-                  </select>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <KpiCard
+              title="Total de Clientes Offline"
+              value={isStatsLoading ? "..." : totalCount}
+              icon={<UsersIcon />}
+              isLoading={isStatsLoading}
+            />
+            <KpiCard
+              title="Novos Casos (24h)"
+              value={isStatsLoading ? "..." : kpiStats.new_critical_cases_24h ?? "0"}
+              icon={<UserPlusIcon />}
+              isLoading={isStatsLoading}
+            />
+            <KpiCard
+              title="OLT Mais Crítica"
+              value={isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"}
+              icon={<ServerIcon />}
+              isLoading={isStatsLoading}
+            />
+            <KpiCard
+              title="Caso Mais Antigo"
+              value={isStatsLoading ? "..." : `${kpiStats.oldest_case_days || 0} dias`}
+              icon={<CalendarIcon />}
+              isLoading={isStatsLoading}
+            />
+          </div>
+          <div>
+            <UploadCard onUpload={handleUpload} isLoading={isUploading} />
+          </div>
+          <div>
+            <ChartContainer title="Histórico de Novos Clientes Offline" isLoading={isStatsLoading}>
+              <OfflineHistoryChart chartData={offlineHistoryData} theme={theme} />
+            </ChartContainer>
+          </div>
+          <div>
+            <ChartContainer title="Clientes Offline por Cidade" isLoading={isStatsLoading}>
+              <ClientsByCityChart chartData={clientsByCityData} theme={theme} />
+            </ChartContainer>
+          </div>
+          <div className="bg-card text-card-foreground p-6 rounded-2xl shadow-lg">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4">
+              <h3 className="text-xl font-bold">Lista de Clientes</h3>
+              <div className="flex flex-col sm:flex-row w-full xl:w-auto items-center gap-2">
+                <div className="relative w-full sm:w-auto">
+                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por nome ou serial..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 pr-4 py-2 w-full sm:w-64 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                  />
                 </div>
+                <div className="relative w-full sm:w-auto">
+                  <ClockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary" />
+                  <input
+                    type="number"
+                    placeholder="Horas mín."
+                    value={hoursFilter}
+                    onChange={(e) => setHoursFilter(Number(e.target.value))}
+                    className="pl-10 pr-4 py-2 w-full sm:w-40 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                    title="Filtrar por horas mínimas offline"
+                  />
+                </div>
+                <select
+                  value={regionFilter}
+                  onChange={(e) => setRegionFilter(e.target.value)}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                >
+                  <option value="">Todas as Regiões</option>
+                  {uniqueRegions.map((r) => (<option key={r} value={r}>{r}</option>))}
+                </select>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                >
+                  <option value={10}>10 por página</option>
+                  <option value={25}>25 por página</option>
+                  <option value={50}>50 por página</option>
+                  <option value={100}>100 por página</option>
+                </select>
               </div>
-              <div className="flex justify-end items-center mb-4 gap-2 flex-wrap">
-                <button
-                  onClick={handleExport}
-                  disabled={totalCount === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                >
-                  <DownloadIcon className="h-4 w-4" /> Exportar CSV
-                </button>
-                <button
-                  onClick={() => openDeleteModal(() => deleteSelectedClients(selectedIds), "Excluir Selecionados", `Deseja excluir ${selectedIds.length} cliente(s)?`)}
-                  disabled={selectedIds.length === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-yellow-500 rounded-lg shadow-md hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                >
-                  <TrashIcon className="h-4 w-4" /> Excluir ({selectedIds.length})
-                </button>
-                <button
-                  onClick={() => openDeleteModal(deleteAllClients, "Excluir Todos", "Deseja excluir TODOS os clientes?")}
-                  disabled={totalCount === 0}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-alert rounded-lg shadow-md hover:bg-alert-dark disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                >
-                  <TrashIcon className="h-4 w-4" /> Excluir Todos
-                </button>
-              </div>
-              <ClientTable
-                clients={clients}
-                isLoading={isLoading}
-                selectedIds={selectedIds}
-                onSelectClient={(id) => setSelectedIds((p) => p.includes(id) ? p.filter((i) => i !== id) : [...p, id])}
-                onSelectAllClients={() => setSelectedIds(selectedIds.length === clients.length ? [] : clients.map((c) => c.id))}
-                sortConfig={sortConfig}
-                onSort={handleSort}
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={(page) => setCurrentPage(page)}
-                totalItems={totalCount}
-                itemsPerPage={itemsPerPage}
-                onAbrirAtendimento={handleAbrirAtendimento}
-              />
             </div>
+            <div className="flex justify-end items-center mb-4 gap-2 flex-wrap">
+              <button
+                onClick={handleExport}
+                disabled={totalCount === 0}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg shadow-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                <DownloadIcon className="h-4 w-4" /> Exportar CSV
+              </button>
+              <button
+                onClick={() => openDeleteModal(() => deleteSelectedClients(selectedIds), "Excluir Selecionados", `Deseja excluir ${selectedIds.length} cliente(s)?`)}
+                disabled={selectedIds.length === 0}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-yellow-500 rounded-lg shadow-md hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                <TrashIcon className="h-4 w-4" /> Excluir ({selectedIds.length})
+              </button>
+              <button
+                onClick={() => openDeleteModal(deleteAllClients, "Excluir Todos", "Deseja excluir TODOS os clientes?")}
+                disabled={totalCount === 0}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-alert rounded-lg shadow-md hover:bg-alert-dark disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                <TrashIcon className="h-4 w-4" /> Excluir Todos
+              </button>
+            </div>
+            <ClientTable
+              clients={clients}
+              isLoading={isLoading}
+              selectedIds={selectedIds}
+              onSelectClient={(id) => setSelectedIds((p) => p.includes(id) ? p.filter((i) => i !== id) : [...p, id])}
+              onSelectAllClients={() => setSelectedIds(selectedIds.length === clients.length ? [] : clients.map((c) => c.id))}
+              sortConfig={sortConfig}
+              onSort={handleSort}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={(page) => setCurrentPage(page)}
+              totalItems={totalCount}
+              itemsPerPage={itemsPerPage}
+              onAbrirAtendimento={handleAbrirAtendimento}
+            />
+          </div>
         </main>
       </div>
     </>

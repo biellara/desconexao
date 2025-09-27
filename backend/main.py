@@ -80,7 +80,8 @@ PROCESSORS: Dict[str, callable] = {
 
 # --- Lógica de Processamento em Background ---
 def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str, report_type: str):
-    logger.info(f"Iniciando processamento para relatório ID: {relatorio_id}, Tipo: {report_type}")
+    logger.info(f"[Background] Iniciando processamento | ID={relatorio_id}, Tipo={report_type}, Arquivo={filename}")
+
     try:
         supabase.table('relatorios').update({"status": "PROCESSING"}).eq('id', relatorio_id).execute()
         
@@ -101,14 +102,18 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
         if df is None:
              raise ValueError("Formato de arquivo inválido ou corrompido.")
 
+        logger.info(f"[Background] Colunas detectadas no arquivo: {df.columns.tolist()}")
+
         processor_func = PROCESSORS.get(report_type)
+        logger.info(f"[Background] Processor selecionado: {processor_func.__name__ if processor_func else 'Nenhum encontrado'}")
+
         if not processor_func:
             raise ValueError(f"Tipo de relatório desconhecido: '{report_type}'")
 
         processor_func(df=df, relatorio_id=relatorio_id, supabase_client=supabase)
         
         supabase.table('relatorios').update({"status": "COMPLETED"}).eq('id', relatorio_id).execute()
-        logger.info(f"Processamento do relatório ID: {relatorio_id} concluído com sucesso.")
+        logger.info(f"[Background] Processamento do relatório ID: {relatorio_id} concluído com sucesso.")
 
     except Exception as e:
         error_detail = f"Erro ao processar o arquivo: {str(e)}"
@@ -118,19 +123,13 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
         ).eq('id', relatorio_id).execute()
 
 
-# --- Endpoints da API ---
-@app.get("/", tags=["Status"])
-def read_root():
-    return {"status": "API online"}
-
 @app.post("/upload", response_model=UploadResponse, tags=["Relatórios"])
 async def upload_relatorio(
     background_tasks: BackgroundTasks, 
     report_type: Annotated[str, Form()],
     file: UploadFile = File(...)
 ):
-    # Log para depuração para vermos o tipo de relatório recebido imediatamente
-    logger.info(f"Recebido upload para o tipo de relatório: '{report_type}' com o arquivo: '{file.filename}'")
+    logger.info(f"[Upload] Recebido upload | Tipo={report_type}, Arquivo={file.filename}")
 
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
         raise HTTPException(status_code=400, detail="Formato de arquivo inválido.")
@@ -147,6 +146,8 @@ async def upload_relatorio(
         raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
     
     relatorio_id = insert_res.data[0]['id']
+    logger.info(f"[Upload] Registro criado no Supabase | ID={relatorio_id}, Tipo={report_type}")
+
     background_tasks.add_task(processar_arquivo_em_background, relatorio_id, contents, file.filename, report_type)
     
     return {"message": "Arquivo recebido! O processamento foi iniciado.", "relatorio_id": relatorio_id}

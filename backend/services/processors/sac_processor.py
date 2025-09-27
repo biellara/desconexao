@@ -14,55 +14,52 @@ SAC_COLUMN_ALIASES = {
 }
 
 def processar_relatorio_sac(df: pd.DataFrame, relatorio_id: int, supabase_client) -> None:
-    """
-    Processa o relatório de Performance do SAC e insere os dados no banco.
-    """
-    logger.info(f"Processando relatório de PERFORMANCE SAC para o ID: {relatorio_id}")
+    logger.info(f"[SAC Processor] Iniciando | Relatório ID={relatorio_id}")
+    logger.info(f"[SAC Processor] Colunas recebidas: {df.columns.tolist()}")
 
     # Normaliza e mapeia as colunas do DataFrame
     df_renamed = normalize_and_map_columns(df, SAC_COLUMN_ALIASES)
+    logger.info(f"[SAC Processor] Colunas após normalização/mapeamento: {df_renamed.columns.tolist()}")
 
     # Validação de colunas essenciais
     required_cols = ["agente", "data_feedback", "nota_monitoria"]
     if not all(col in df_renamed.columns for col in required_cols):
-        raise ValueError("O arquivo do SAC deve conter colunas para agente, data e nota.")
+        raise ValueError(f"[SAC Processor] Arquivo inválido: faltam colunas obrigatórias. Esperado {required_cols}, recebido {df_renamed.columns.tolist()}")
 
     # --- Tratamento de Dados ---
     df_renamed['relatorio_id'] = relatorio_id
     
-    # Converte data, tratando múltiplos formatos
+    # Converte data
     df_renamed['data_feedback'] = pd.to_datetime(df_renamed['data_feedback'], dayfirst=True, errors='coerce')
     
-    # Converte colunas numéricas
+    # Converte numéricos
     numeric_cols = ['nota_monitoria', 'tempo_total_atendimento']
     for col in numeric_cols:
         if col in df_renamed.columns:
             df_renamed[col] = pd.to_numeric(df_renamed[col], errors='coerce')
+            logger.info(f"[SAC Processor] Coluna {col} convertida para numérico")
 
-    # Remove linhas onde dados essenciais são nulos
+    # Remove linhas inválidas
+    antes = len(df_renamed)
     df_renamed.dropna(subset=['agente', 'data_feedback', 'nota_monitoria'], inplace=True)
-    
-    # Seleciona apenas as colunas que existem na tabela do DB
-    colunas_db = [
-        'relatorio_id', 'agente', 'data_feedback', 
-        'nota_monitoria', 'tempo_total_atendimento'
-    ]
-    
-    # Garante que todas as colunas do DB existam no DataFrame, preenchendo com None se necessário
+    depois = len(df_renamed)
+    logger.info(f"[SAC Processor] Linhas removidas por dados nulos: {antes - depois}")
+
+    # Seleciona colunas do DB
+    colunas_db = ['relatorio_id', 'agente', 'data_feedback', 'nota_monitoria', 'tempo_total_atendimento']
     for col in colunas_db:
         if col not in df_renamed.columns:
             df_renamed[col] = None
             
     df_final = df_renamed[colunas_db]
+    logger.info(f"[SAC Processor] DataFrame final pronto: {df_final.shape[0]} linhas, {df_final.shape[1]} colunas")
 
-    # Converte para dicionário e insere no Supabase
     dados_para_inserir = df_final.to_dict("records")
 
     if dados_para_inserir:
-        logger.info(f"Inserindo {len(dados_para_inserir)} registros de performance do SAC no DB.")
+        logger.info(f"[SAC Processor] Inserindo {len(dados_para_inserir)} registros no Supabase")
         insert_res = supabase_client.table('sac_performance').insert(dados_para_inserir).execute()
         if hasattr(insert_res, 'error') and insert_res.error:
-            raise Exception(f"Falha ao salvar dados de performance do SAC: {insert_res.error}")
+            raise Exception(f"[SAC Processor] Falha ao salvar dados: {insert_res.error}")
     else:
-        logger.info("Nenhum dado válido de performance do SAC encontrado no relatório.")
-
+        logger.warning("[SAC Processor] Nenhum dado válido encontrado para inserir")
