@@ -1,4 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form, Depends
+from typing import Annotated
+
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
@@ -18,28 +20,27 @@ logger = logging.getLogger(__name__)
 
 # --- Importação dos Módulos de Serviço ---
 from backend.services.supabase_client import supabase
-# Importa os processadores específicos
 from backend.services.processors import desconexao_processor, monitoria_processor, sac_processor
 
 # --- Carregar o Token do ERP do ambiente ---
 ERP_TOKEN = os.getenv("ERP_API_TOKEN")
 if not ERP_TOKEN:
-    logger.warning("A variável de ambiente ERP_API_TOKEN não está definida. A integração com o ERP pode falhar.")
+    logger.warning("A variável de ambiente ERP_API_TOKEN não está definida.")
 
 
-# --- Modelos Pydantic (Tipagem de Dados) ---
+# --- Modelos Pydantic ---
 class ErpRequest(BaseModel):
-    client_name: str = Field(..., example="GABRIEL DIAS DE LARA")
+    client_name: str
 
 class ErpClientResponse(BaseModel):
-    client_id: int = Field(..., example=337)
+    client_id: int
     client_name: str
 
 class DeleteRequest(BaseModel):
-    ids: List[int] = Field(..., example=[1, 2, 3])
+    ids: List[int]
 
 class MessageResponse(BaseModel):
-    message: str = Field(..., example="Operação bem-sucedida.")
+    message: str
 
 class UploadResponse(BaseModel):
     message: str
@@ -57,72 +58,18 @@ class ReportStatusResponse(BaseModel):
 
 # --- Configuração do App FastAPI ---
 app = FastAPI(
-    title="Dashboard ONUs API",
-    description="API para processar relatórios de ONUs e identificar clientes offline.",
-    version="1.3.0"
+    title="Plataforma de Inteligência Operacional API",
+    description="API para processar e analisar relatórios de múltiplas áreas.",
+    version="2.0.0"
 )
 
-origins = [
-    "https://desconexao.vercel.app",
-    "http://localhost:5173",
-    "http://localhost:3000"
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"], # Simplificado para desenvolvimento, restrinja em produção
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# --- ROTA DO ERP ATUALIZADA (Opção 1) ---
-@app.post("/erp/find-client", response_model=ErpClientResponse, tags=["ERP"], summary="Encontra o ID de um cliente no ERP")
-async def find_erp_client(request: ErpRequest):
-    if not ERP_TOKEN:
-        raise HTTPException(status_code=500, detail="Token da API do ERP não configurado no servidor.")
-
-    ERP_BASE_URL = "https://erp.iredinternet.com.br:45701/api/v1/Projects/Attendance"
-    client_name_encoded = request.client_name.replace(" ", "%20")
-    
-    auth_headers = {"Authorization": f"Bearer {ERP_TOKEN}"}
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            find_people_url = f"{ERP_BASE_URL}/FindPeople?Page=1&PageSize=1&search={client_name_encoded}"
-            logger.info(f"Buscando cliente no ERP: {find_people_url}")
-            
-            erp_response = await client.get(find_people_url, headers=auth_headers, timeout=10.0)
-            erp_response.raise_for_status()
-            
-            response_data = erp_response.json()
-            
-            clients_found = response_data.get("response", {}).get("data", [])
-            if not clients_found:
-                raise HTTPException(status_code=404, detail=f"Cliente '{request.client_name}' não encontrado no ERP.")
-
-            client_id = clients_found[0].get("id")
-            if not client_id:
-                raise HTTPException(status_code=404, detail="ID do cliente não encontrado na resposta do ERP.")
-                
-            logger.info(f"Cliente '{request.client_name}' encontrado com ID: {client_id}")
-            
-            return ErpClientResponse(client_id=client_id, client_name=request.client_name)
-
-    except httpx.HTTPStatusError as e:
-        error_body = e.response.text or "Sem detalhes"
-        logger.error(f"Erro de comunicação com a API do ERP ({e.response.status_code}): {error_body}")
-        raise HTTPException(status_code=e.response.status_code, detail=f"Erro ao comunicar com o ERP.")
-    except Exception as e:
-        logger.error(f"Erro inesperado na integração com ERP: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ocorreu um erro inesperado na integração.")
-
-
-# --- Demais Rotas ---
-
-@app.get("/", tags=["Status"])
-def read_root():
-    return {"status": "API online"}
 
 # Mapeamento dos tipos de relatório para suas funções de processamento
 PROCESSORS: Dict[str, callable] = {
@@ -131,50 +78,75 @@ PROCESSORS: Dict[str, callable] = {
     "sac": sac_processor.processar_relatorio_sac,
 }
 
+# --- Lógica de Processamento em Background ---
 def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str, report_type: str):
-    logger.info(f"Iniciando processamento em background para o relatório ID: {relatorio_id}, Tipo: {report_type}")
+    logger.info(f"Iniciando processamento para relatório ID: {relatorio_id}, Tipo: {report_type}")
     try:
         supabase.table('relatorios').update({"status": "PROCESSING"}).eq('id', relatorio_id).execute()
         
-        df = None
         file_stream = io.BytesIO(contents)
-
+        df = None
         if filename.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(file_stream)
         elif filename.endswith('.csv'):
             try:
                 df = pd.read_csv(file_stream, sep=',', engine='python', encoding='utf-8-sig')
                 if df.shape[1] == 1:
-                    logger.warning("CSV lido com uma única coluna usando vírgula. Tentando com ponto e vírgula.")
                     file_stream.seek(0)
                     df = pd.read_csv(file_stream, sep=';', engine='python', encoding='utf-8-sig')
-            except Exception as e:
-                logger.warning(f"Falha ao ler CSV com UTF-8. Tentando com latin-1. Erro: {e}")
+            except Exception:
                 file_stream.seek(0)
                 df = pd.read_csv(file_stream, sep=None, engine='python', encoding='latin-1')
         
         if df is None:
-             raise ValueError("Não foi possível ler o arquivo. Formato pode ser inválido ou o arquivo está corrompido.")
+             raise ValueError("Formato de arquivo inválido ou corrompido.")
 
-        # --- Lógica de Roteamento ---
         processor_func = PROCESSORS.get(report_type)
         if not processor_func:
             raise ValueError(f"Tipo de relatório desconhecido: '{report_type}'")
 
-        # Chama a função de processamento correta, passando o cliente supabase
         processor_func(df=df, relatorio_id=relatorio_id, supabase_client=supabase)
-        # ---------------------------
         
         supabase.table('relatorios').update({"status": "COMPLETED"}).eq('id', relatorio_id).execute()
         logger.info(f"Processamento do relatório ID: {relatorio_id} concluído com sucesso.")
 
     except Exception as e:
         error_detail = f"Erro ao processar o arquivo: {str(e)}"
-        logger.error(f"Falha no processamento do relatório (ID: {relatorio_id}). Erro: {error_detail}", exc_info=True)
+        logger.error(error_detail, exc_info=True)
         supabase.table('relatorios').update(
             {"status": "FAILED", "detalhes_erro": error_detail}
         ).eq('id', relatorio_id).execute()
 
+
+# --- Endpoints da API ---
+@app.get("/", tags=["Status"])
+def read_root():
+    return {"status": "API online"}
+
+@app.post("/upload", response_model=UploadResponse, tags=["Relatórios"])
+async def upload_relatorio(
+    background_tasks: BackgroundTasks, 
+    report_type: Annotated[str, Form()],
+    file: UploadFile = File(...)
+):
+    if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
+        raise HTTPException(status_code=400, detail="Formato de arquivo inválido.")
+    
+    contents = await file.read()
+    
+    insert_res = supabase.table('relatorios').insert({
+        "nome_arquivo": file.filename,
+        "status": "PENDING",
+        "tipo": report_type
+    }).execute()
+
+    if not insert_res.data:
+        raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
+    
+    relatorio_id = insert_res.data[0]['id']
+    background_tasks.add_task(processar_arquivo_em_background, relatorio_id, contents, file.filename, report_type)
+    
+    return {"message": "Arquivo recebido! O processamento foi iniciado.", "relatorio_id": relatorio_id}
 
 @app.get("/relatorios/status/{relatorio_id}", response_model=ReportStatusResponse, tags=["Relatórios"])
 def get_report_status(relatorio_id: int):
@@ -232,7 +204,6 @@ def get_performance_por_agente():
     except Exception as e:
         logger.error(f"Erro em /stats/sac/performance-agente: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro ao buscar performance por agente.")
-# --- FIM DOS NOVOS ENDPOINTS ---
 
 @app.get("/stats/kpis", response_model=NewKpiStatsResponse, tags=["Estatísticas"], summary="Busca os KPIs principais")
 def get_main_kpis():

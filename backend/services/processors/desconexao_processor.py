@@ -1,13 +1,25 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timezone
-from typing import Dict, Any, List
 import logging
-import unicodedata
-
-# Este arquivo agora contém a lógica que estava em 'file_processor.py'
+from .helpers import normalize_and_map_columns
 
 logger = logging.getLogger(__name__)
+
+# Mapeamento de colunas para o relatório de Desconexão
+DISCONNECTION_COLUMN_ALIASES = {
+    "nome_cliente": ["cliente"],
+    "serial_onu": ["sn_onu"],
+    "olt_regiao": ["olt"],
+    "status_conexao": ["status"],
+    "data_desconexao": ["ultima_alteracao_de_status", "ultima_atualizacao_de_sinal", "ultima_comunicacao"],
+    "cto": ["cto"],
+    "slot_pon_onu": ["slotpononu_id"],
+    "modelo_onu": ["modelo"],
+    "rx_onu": ["rx_onu"],
+    "rx_olt": ["rx_olt"],
+    "distancia_m": ["distancia_entre_olt_e_onu_m"]
+}
 
 # --- MAPEAMENTO DE OLT PARA CIDADE ---
 OLT_CIDADE_MAP = {
@@ -81,56 +93,28 @@ OLT_CIDADE_MAP = {
     "OLT-PARKS-BANCADA": "Laboratório", "OLT-ZTE-BANCADA": "Laboratório",
 }
 
-COLUMN_ALIASES = {
-    "nome_cliente": ["cliente"],
-    "serial_onu": ["sn_onu"],
-    "olt_regiao": ["olt"],
-    "status_conexao": ["status"],
-    "data_desconexao": ["ultima_alteracao_de_status", "ultima_atualizacao_de_sinal", "ultima_comunicacao"],
-    "cto": ["cto"],
-    "slot_pon_onu": ["slotpononu_id"],
-    "modelo_onu": ["modelo"],
-    "rx_onu": ["rx_onu"],
-    "rx_olt": ["rx_olt"],
-    "distancia_m": ["distancia_entre_olt_e_onu_m"]
-}
-
-def normalize_text(text: str) -> str:
-    if not isinstance(text, str):
-        return ""
-    nfkd_form = unicodedata.normalize('NFKD', text)
-    ascii_text = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
-    return ascii_text.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
 
 def get_cidade_from_olt(olt_regiao: str) -> str:
     if not isinstance(olt_regiao, str):
         return 'Outra'
-    return OLT_CIDADE_MAP.get(olt_regiao.strip(), 'Outra')
+    # Procura por uma correspondência parcial para abranger mais casos
+    for key, city in OLT_CIDADE_MAP.items():
+        if key in olt_regiao:
+            return city
+    return 'Outra'
 
 def processar_relatorio_desconexao(df: pd.DataFrame, relatorio_id: int, supabase_client) -> None:
     logger.info(f"Processando relatório de DESCONEXÃO para o ID: {relatorio_id}")
     
-    original_columns = df.columns.tolist()
-    logger.info(f"Colunas originais encontradas: {original_columns}")
+    df_renamed = normalize_and_map_columns(df, DISCONNECTION_COLUMN_ALIASES)
+    
+    # Validação com mensagem de erro específica
+    if "status_conexao" not in df_renamed.columns or "data_desconexao" not in df_renamed.columns:
+        raise ValueError("[Processador de Desconexão] O arquivo deve conter colunas para 'Status' e data (ex: 'Última Alteração').")
 
-    df.columns = [normalize_text(col) for col in df.columns]
-    
-    rename_map = {}
-    for db_col, aliases in COLUMN_ALIASES.items():
-        possible_names = [normalize_text(alias) for alias in [db_col] + aliases]
-        for name in possible_names:
-            if name in df.columns:
-                rename_map[name] = db_col
-                break
-    
-    df.rename(columns=rename_map, inplace=True)
-    
-    if "status_conexao" not in df.columns or "data_desconexao" not in df.columns:
-        raise ValueError("O arquivo de desconexão deve conter 'Status' e uma coluna de data como 'Última Alteração'.")
-
-    df['motivo_desconexao'] = df['status_conexao']
+    df_renamed['motivo_desconexao'] = df_renamed['status_conexao']
     offline_statuses = ["LOSS", "SEM ENERGIA"]
-    df_offline = df[df["status_conexao"].str.strip().str.upper().isin(offline_statuses)].copy()
+    df_offline = df_renamed[df_renamed["status_conexao"].str.strip().str.upper().isin(offline_statuses)].copy()
     
     if df_offline.empty:
         logger.info("Nenhum cliente com status 'LOSS' ou 'Sem Energia' foi encontrado.")
@@ -153,20 +137,19 @@ def processar_relatorio_desconexao(df: pd.DataFrame, relatorio_id: int, supabase
             if col == 'distancia_m':
                 df_offline[col] = df_offline[col].astype('Int64')
 
-    colunas_para_db = [
+    colunas_db = [
         "nome_cliente", "serial_onu", "olt_regiao", "data_desconexao", 
         "horas_offline", "cidade", "motivo_desconexao", "cto", "slot_pon_onu", 
         "modelo_onu", "rx_onu", "rx_olt", "distancia_m"
     ]
     
-    for col in colunas_para_db:
+    for col in colunas_db:
         if col not in df_offline.columns:
             df_offline[col] = None
 
     df_offline["relatorio_id"] = relatorio_id
-    colunas_para_db.insert(0, "relatorio_id")
-
-    df_final = df_offline[colunas_para_db].copy()
+    
+    df_final = df_offline[colunas_db + ["relatorio_id"]].copy()
     df_final = df_final.where(pd.notna(df_final), None)
     dados_para_inserir = df_final.to_dict("records")
 
@@ -179,3 +162,4 @@ def processar_relatorio_desconexao(df: pd.DataFrame, relatorio_id: int, supabase
         insert_res = supabase_client.table('clientes_off').insert(dados_para_inserir).execute()
         if hasattr(insert_res, 'error') and insert_res.error:
             raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error}")
+
