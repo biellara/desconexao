@@ -67,6 +67,13 @@ def processar_relatorio_sac(df: pd.DataFrame, relatorio_id: int, supabase_client
             df_renamed[col] = None
             
     df_final = df_renamed[colunas_db]
+
+    # 🔧 Converte pandas.Timestamp para datetime nativo (serializável)
+    if 'data_feedback' in df_final.columns:
+        df_final['data_feedback'] = df_final['data_feedback'].apply(
+            lambda x: x.to_pydatetime() if isinstance(x, pd.Timestamp) else x
+        )
+
     logger.info(f"[SAC Processor] DataFrame final pronto: {df_final.shape[0]} linhas, {df_final.shape[1]} colunas")
 
     # Converte para dicionário e insere no Supabase
