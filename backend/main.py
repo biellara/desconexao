@@ -129,6 +129,9 @@ async def upload_relatorio(
     report_type: Annotated[str, Form()],
     file: UploadFile = File(...)
 ):
+    # Log para depuração para vermos o tipo de relatório recebido imediatamente
+    logger.info(f"Recebido upload para o tipo de relatório: '{report_type}' com o arquivo: '{file.filename}'")
+
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
         raise HTTPException(status_code=400, detail="Formato de arquivo inválido.")
     
@@ -159,67 +162,16 @@ def get_report_status(relatorio_id: int):
         logger.error(f"Erro ao buscar status do relatório {relatorio_id}: {e}")
         raise HTTPException(status_code=500, detail="Erro ao consultar o estado do relatório.")
 
-@app.post("/upload", response_model=UploadResponse, tags=["Relatórios"], summary="Upload de novo relatório")
-async def upload_relatorio(
-    background_tasks: BackgroundTasks, 
-    file: UploadFile = File(...),
-    report_type: str = Form("desconexao") # Recebe o tipo de relatório do formulário
-):
-    if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
-        raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Use Excel ou CSV.")
-    
-    contents = await file.read()
-    
-    insert_res = supabase.table('relatorios').insert({
-        "nome_arquivo": file.filename,
-        "status": "PENDING",
-        "tipo": report_type # Salva o tipo no banco de dados
-    }).execute()
-
-    if not insert_res.data:
-        raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
-    
-    relatorio_id = insert_res.data[0]['id']
-    background_tasks.add_task(processar_arquivo_em_background, relatorio_id, contents, file.filename, report_type)
-    
-    return {"message": "Arquivo recebido! O processamento foi iniciado.", "relatorio_id": relatorio_id}
-
-# --- NOVOS ENDPOINTS PARA O MÓDULO SAC ---
-@app.get("/stats/sac/kpis", tags=["Estatísticas SAC"], summary="Busca os KPIs do SAC")
-def get_sac_kpis():
-    try:
-        response = supabase.rpc('get_sac_kpis').execute()
-        if response.data and len(response.data) > 0:
-            return response.data[0]
-        return {"media_nota_monitoria": 0, "tempo_medio_atendimento_minutos": 0}
-    except Exception as e:
-        logger.error(f"Erro em /stats/sac/kpis: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Erro ao buscar KPIs do SAC.")
-
-@app.get("/stats/sac/performance-agente", tags=["Estatísticas SAC"], summary="Busca a performance por agente")
-def get_performance_por_agente():
-    try:
-        response = supabase.rpc('get_performance_por_agente').execute()
-        return response.data
-    except Exception as e:
-        logger.error(f"Erro em /stats/sac/performance-agente: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Erro ao buscar performance por agente.")
-
-@app.get("/stats/kpis", response_model=NewKpiStatsResponse, tags=["Estatísticas"], summary="Busca os KPIs principais")
+@app.get("/stats/kpis", response_model=NewKpiStatsResponse, tags=["Estatísticas Saúde da Rede"])
 def get_main_kpis():
     try:
         response = supabase.rpc('get_new_dashboard_kpis').execute()
-        if response.data and len(response.data) > 0:
-            return response.data[0]
-        
-        logger.warning("A RPC 'get_new_dashboard_kpis' não retornou dados. Usando valores padrão.")
-        return NewKpiStatsResponse(new_critical_cases_24h=0, most_critical_olt="N/A", oldest_case_days=0)
-        
+        return response.data[0] if response.data else NewKpiStatsResponse(new_critical_cases_24h=0, most_critical_olt="N/A", oldest_case_days=0)
     except Exception as e:
-        logger.error(f"Erro ao buscar KPIs em /stats/kpis: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Erro interno ao buscar KPIs.")
+        logger.error(f"Erro ao buscar KPIs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao buscar KPIs.")
 
-@app.get("/stats/clients-by-city", tags=["Estatísticas"])
+@app.get("/stats/clients-by-city", tags=["Estatísticas Saúde da Rede"])
 def get_clients_by_city():
     try:
         response = supabase.rpc('get_clients_by_city').execute()
@@ -228,7 +180,7 @@ def get_clients_by_city():
         logger.error(f"Erro em /stats/clients-by-city: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Erro ao buscar dados por cidade.")
 
-@app.get("/stats/offline-history", tags=["Estatísticas"])
+@app.get("/stats/offline-history", tags=["Estatísticas Saúde da Rede"])
 def get_offline_history():
     try:
         response = supabase.rpc('get_offline_history').execute()
@@ -241,26 +193,31 @@ def get_offline_history():
 def delete_all_clients():
     try:
         delete_res = supabase.table('clientes_off').delete().neq('id', 0).execute()
-        count = len(delete_res.data)
-        return {"message": f"{count} registros foram excluídos com sucesso."}
+        return {"message": f"{len(delete_res.data)} registros foram excluídos."}
     except Exception as e:
-        logger.error(f"Erro ao excluir todos os clientes: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/clients", response_model=MessageResponse, tags=["Clientes"])
 def delete_selected_clients(request: DeleteRequest):
-    if not request.ids:
-        raise HTTPException(status_code=400, detail="Nenhum ID foi fornecido.")
     try:
         delete_res = supabase.table('clientes_off').delete().in_('id', request.ids).execute()
-        count = len(delete_res.data)
-        return {"message": f"{count} registros selecionados foram excluídos."}
+        return {"message": f"{len(delete_res.data)} registros selecionados foram excluídos."}
     except Exception as e:
-        logger.error(f"Erro ao excluir clientes selecionados: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Erro ao excluir registros: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+@app.get("/stats/sac/kpis", tags=["Estatísticas SAC"])
+def get_sac_kpis():
+    try:
+        response = supabase.rpc('get_sac_kpis').execute()
+        return response.data[0] if response.data else {"media_nota_monitoria": 0, "tempo_medio_atendimento_minutos": 0}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Erro ao buscar KPIs do SAC.")
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+@app.get("/stats/sac/performance-agente", tags=["Estatísticas SAC"])
+def get_performance_por_agente():
+    try:
+        response = supabase.rpc('get_performance_por_agente').execute()
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Erro ao buscar performance por agente.")
 
