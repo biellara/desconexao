@@ -165,11 +165,15 @@ def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> List[Dict[str, A
     # Mapeia a cidade
     df_offline["cidade"] = df_offline["olt_regiao"].apply(get_cidade_from_olt)
 
-    # Converte colunas numéricas, tratando erros e substituindo não-números por None
+    # Converte colunas numéricas, tratando erros e garantindo o tipo correto
     numeric_cols = ['rx_onu', 'rx_olt', 'distancia_m']
     for col in numeric_cols:
         if col in df_offline.columns:
+            # Converte para numérico, tratando erros
             df_offline[col] = pd.to_numeric(df_offline[col], errors='coerce').replace([np.inf, -np.inf], np.nan)
+            # Se for a coluna de distância, garante que seja um inteiro
+            if col == 'distancia_m':
+                df_offline[col] = df_offline[col].astype('Int64') # 'Int64' (com 'I' maiúsculo) lida bem com valores nulos (NaN)
 
     # Lista final de colunas para o banco de dados
     colunas_para_db = [
@@ -196,4 +200,5 @@ def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> List[Dict[str, A
 
     logger.info(f"Preparados {len(dados_para_inserir)} registros para inserção no banco de dados.")
     return dados_para_inserir
+
 
