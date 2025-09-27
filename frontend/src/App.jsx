@@ -6,10 +6,8 @@ import { SpinnerIcon } from './components/Icons';
 // Lazy loading das páginas para otimizar o carregamento inicial
 const DashboardVisaoGeral = lazy(() => import('./pages/DashboardVisaoGeral'));
 const ClientesCriticosPage = lazy(() => import('./pages/ClientesCriticosPage'));
+const SacPerformancePage = lazy(() => import('./pages/SacPerformancePage')); // Nova página importada
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
-
-// Placeholder para futuras páginas
-const SacPerformancePage = () => <div className="p-8">Página de Performance do SAC em construção...</div>;
 
 function App() {
   return (
@@ -46,3 +44,4 @@ function App() {
 }
 
 export default App;
+

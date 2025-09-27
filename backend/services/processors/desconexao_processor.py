@@ -5,6 +5,8 @@ from typing import Dict, Any, List
 import logging
 import unicodedata
 
+# Este arquivo agora contém a lógica que estava em 'file_processor.py'
+
 logger = logging.getLogger(__name__)
 
 # --- MAPEAMENTO DE OLT PARA CIDADE ---
@@ -79,7 +81,6 @@ OLT_CIDADE_MAP = {
     "OLT-PARKS-BANCADA": "Laboratório", "OLT-ZTE-BANCADA": "Laboratório",
 }
 
-# --- MAPEAMENTO DE COLUNAS (MAIS ROBUSTO) ---
 COLUMN_ALIASES = {
     "nome_cliente": ["cliente"],
     "serial_onu": ["sn_onu"],
@@ -95,64 +96,46 @@ COLUMN_ALIASES = {
 }
 
 def normalize_text(text: str) -> str:
-    """Função para limpar e padronizar texto."""
     if not isinstance(text, str):
         return ""
-    # Remove acentos e caracteres especiais
     nfkd_form = unicodedata.normalize('NFKD', text)
     ascii_text = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
-    # Converte para minúsculas e substitui espaços/hífens por underscore
     return ascii_text.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '')
 
 def get_cidade_from_olt(olt_regiao: str) -> str:
-    """Retorna a cidade correspondente a uma OLT ou 'Outra' se não encontrar."""
     if not isinstance(olt_regiao, str):
         return 'Outra'
     return OLT_CIDADE_MAP.get(olt_regiao.strip(), 'Outra')
 
-def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> List[Dict[str, Any]]:
-    """
-    Processa um DataFrame de relatório para extrair informações de clientes offline.
-    """
+def processar_relatorio_desconexao(df: pd.DataFrame, relatorio_id: int, supabase_client) -> None:
+    logger.info(f"Processando relatório de DESCONEXÃO para o ID: {relatorio_id}")
+    
     original_columns = df.columns.tolist()
-    logger.info(f"Colunas originais encontradas no arquivo: {original_columns}")
+    logger.info(f"Colunas originais encontradas: {original_columns}")
 
-    # Normaliza as colunas do DataFrame para um formato padrão
     df.columns = [normalize_text(col) for col in df.columns]
-    normalized_columns = df.columns.tolist()
-    logger.info(f"Colunas normalizadas: {normalized_columns}")
-
-    # Mapeia as colunas do arquivo para as colunas do banco de dados
+    
     rename_map = {}
     for db_col, aliases in COLUMN_ALIASES.items():
         possible_names = [normalize_text(alias) for alias in [db_col] + aliases]
         for name in possible_names:
-            if name in normalized_columns:
+            if name in df.columns:
                 rename_map[name] = db_col
                 break
     
     df.rename(columns=rename_map, inplace=True)
-    logger.info(f"Mapeamento de colunas aplicado: {rename_map}")
-    logger.info(f"Colunas após renomear: {df.columns.tolist()}")
-
-    # Validação de colunas essenciais após o mapeamento
+    
     if "status_conexao" not in df.columns or "data_desconexao" not in df.columns:
-        raise ValueError("O arquivo deve conter a coluna 'Status' e uma coluna de data como 'Última Alteração de Status'.")
+        raise ValueError("O arquivo de desconexão deve conter 'Status' e uma coluna de data como 'Última Alteração'.")
 
-    # Usa o status como motivo da desconexão
     df['motivo_desconexao'] = df['status_conexao']
-
-    # Filtra por status de desconexão (LOSS, Sem Energia, etc.)
     offline_statuses = ["LOSS", "SEM ENERGIA"]
     df_offline = df[df["status_conexao"].str.strip().str.upper().isin(offline_statuses)].copy()
     
     if df_offline.empty:
         logger.info("Nenhum cliente com status 'LOSS' ou 'Sem Energia' foi encontrado.")
-        return []
-    
-    logger.info(f"Encontrados {len(df_offline)} clientes com status offline.")
+        return
 
-    # Processamento de data e cálculo de horas
     df_offline["data_desconexao"] = pd.to_datetime(df_offline["data_desconexao"], errors='coerce')
     df_offline.dropna(subset=["data_desconexao"], inplace=True)
     
@@ -161,21 +144,15 @@ def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> List[Dict[str, A
         lambda x: x.tz_localize('UTC') if x.tzinfo is None else x.tz_convert('UTC')
     )
     df_offline["horas_offline"] = ((agora_utc - df_offline["data_desconexao"]).dt.total_seconds() / 3600).astype(int)
-
-    # Mapeia a cidade
     df_offline["cidade"] = df_offline["olt_regiao"].apply(get_cidade_from_olt)
 
-    # Converte colunas numéricas, tratando erros e garantindo o tipo correto
     numeric_cols = ['rx_onu', 'rx_olt', 'distancia_m']
     for col in numeric_cols:
         if col in df_offline.columns:
-            # Converte para numérico, tratando erros
             df_offline[col] = pd.to_numeric(df_offline[col], errors='coerce').replace([np.inf, -np.inf], np.nan)
-            # Se for a coluna de distância, garante que seja um inteiro
             if col == 'distancia_m':
-                df_offline[col] = df_offline[col].astype('Int64') # 'Int64' (com 'I' maiúsculo) lida bem com valores nulos (NaN)
+                df_offline[col] = df_offline[col].astype('Int64')
 
-    # Lista final de colunas para o banco de dados
     colunas_para_db = [
         "nome_cliente", "serial_onu", "olt_regiao", "data_desconexao", 
         "horas_offline", "cidade", "motivo_desconexao", "cto", "slot_pon_onu", 
@@ -189,7 +166,6 @@ def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> List[Dict[str, A
     df_offline["relatorio_id"] = relatorio_id
     colunas_para_db.insert(0, "relatorio_id")
 
-    # Prepara o payload final
     df_final = df_offline[colunas_para_db].copy()
     df_final = df_final.where(pd.notna(df_final), None)
     dados_para_inserir = df_final.to_dict("records")
@@ -198,7 +174,8 @@ def processar_relatorio(df: pd.DataFrame, relatorio_id: int) -> List[Dict[str, A
         if record.get("data_desconexao"):
             record["data_desconexao"] = record["data_desconexao"].isoformat()
 
-    logger.info(f"Preparados {len(dados_para_inserir)} registros para inserção no banco de dados.")
-    return dados_para_inserir
-
-
+    if dados_para_inserir:
+        logger.info(f"Inserindo {len(dados_para_inserir)} registros de clientes offline no DB.")
+        insert_res = supabase_client.table('clientes_off').insert(dados_para_inserir).execute()
+        if hasattr(insert_res, 'error') and insert_res.error:
+            raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error}")

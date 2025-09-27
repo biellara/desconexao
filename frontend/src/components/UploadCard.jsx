@@ -4,6 +4,8 @@ import { UploadIcon } from './Icons.jsx';
 
 export default function UploadCard({ onUpload, isLoading }) {
   const [selectedFile, setSelectedFile] = useState(null);
+  // Estado para controlar o tipo de relatório selecionado
+  const [reportType, setReportType] = useState('desconexao'); 
 
   const onDrop = useCallback(acceptedFiles => {
     if (acceptedFiles && acceptedFiles.length > 0) {
@@ -24,7 +26,8 @@ export default function UploadCard({ onUpload, isLoading }) {
   const handleSubmit = (event) => {
     event.preventDefault();
     if (selectedFile) {
-      onUpload(selectedFile);
+      // Passa o tipo de relatório junto com o arquivo
+      onUpload(selectedFile, reportType); 
       setSelectedFile(null);
     }
   };
@@ -33,6 +36,24 @@ export default function UploadCard({ onUpload, isLoading }) {
     <div className="bg-card text-card-foreground p-6 rounded-2xl shadow-lg h-full flex flex-col">
       <h3 className="text-xl font-bold mb-4">Atualizar Relatório</h3>
       <form onSubmit={handleSubmit} className="flex flex-col flex-grow">
+        {/* Seletor do tipo de relatório */}
+        <div className="mb-4">
+          <label htmlFor="reportType" className="block text-sm font-medium text-secondary mb-2">
+            Tipo de Relatório
+          </label>
+          <select
+            id="reportType"
+            value={reportType}
+            onChange={(e) => setReportType(e.target.value)}
+            className="w-full px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+            disabled={isLoading}
+          >
+            <option value="desconexao">Clientes Offline (Desconexão)</option>
+            <option value="monitoria" disabled>Monitoria de Qualidade (em breve)</option>
+            <option value="sac" disabled>Performance SAC (em breve)</option>
+          </select>
+        </div>
+
         <div
           {...getRootProps()}
           className={`flex-grow flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors

@@ -81,9 +81,12 @@ export const fetchOfflineHistoryStats = async () => {
     return data;
 };
 
-export const uploadFile = async (file) => {
+// Função de upload atualizada para enviar o tipo de relatório
+export const uploadFile = async (file, reportType) => {
   const formData = new FormData();
   formData.append('file', file);
+  // Envia o tipo de relatório como um campo do formulário
+  formData.append('report_type', reportType); 
   const response = await apiClient.post('/upload', formData);
   return response.data;
 };
@@ -110,3 +113,15 @@ export const findErpClient = async (clientName) => {
     console.log("[api.js] Resposta do backend recebida:", response.data);
     return response.data;
 };
+
+// --- NOVAS FUNÇÕES PARA O MÓDULO SAC ---
+export const fetchSacKpis = async () => {
+  const { data } = await apiClient.get('/stats/sac/kpis');
+  return data;
+};
+
+export const fetchAgentPerformance = async () => {
+  const { data } = await apiClient.get('/stats/sac/performance-agente');
+  return data;
+};
+

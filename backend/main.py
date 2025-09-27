@@ -1,10 +1,10 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
 import logging
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 import httpx
 
@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 # --- Importação dos Módulos de Serviço ---
 from backend.services.supabase_client import supabase
-from backend.services.file_processor import processar_relatorio
+# Importa os processadores específicos
+from backend.services.processors import desconexao_processor, monitoria_processor, sac_processor
 
 # --- Carregar o Token do ERP do ambiente ---
 ERP_TOKEN = os.getenv("ERP_API_TOKEN")
@@ -123,42 +124,46 @@ async def find_erp_client(request: ErpRequest):
 def read_root():
     return {"status": "API online"}
 
-def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str):
-    logger.info(f"Iniciando processamento em background para o relatório ID: {relatorio_id}")
+# Mapeamento dos tipos de relatório para suas funções de processamento
+PROCESSORS: Dict[str, callable] = {
+    "desconexao": desconexao_processor.processar_relatorio_desconexao,
+    "monitoria": monitoria_processor.processar_relatorio_monitoria,
+    "sac": sac_processor.processar_relatorio_sac,
+}
+
+def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename: str, report_type: str):
+    logger.info(f"Iniciando processamento em background para o relatório ID: {relatorio_id}, Tipo: {report_type}")
     try:
         supabase.table('relatorios').update({"status": "PROCESSING"}).eq('id', relatorio_id).execute()
         
         df = None
-        file_stream = io.BytesIO(contents) # Cria um stream único para o arquivo
+        file_stream = io.BytesIO(contents)
 
         if filename.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(file_stream)
         elif filename.endswith('.csv'):
             try:
-                # Tenta ler com UTF-8-SIG e vírgula como separador
                 df = pd.read_csv(file_stream, sep=',', engine='python', encoding='utf-8-sig')
-                # Se todas as colunas foram para uma só, tenta o ponto e vírgula
                 if df.shape[1] == 1:
                     logger.warning("CSV lido com uma única coluna usando vírgula. Tentando com ponto e vírgula.")
-                    file_stream.seek(0) # <--- CORREÇÃO: "Rebobina" o arquivo para o início
+                    file_stream.seek(0)
                     df = pd.read_csv(file_stream, sep=';', engine='python', encoding='utf-8-sig')
             except Exception as e:
                 logger.warning(f"Falha ao ler CSV com UTF-8. Tentando com latin-1. Erro: {e}")
-                file_stream.seek(0) # <--- CORREÇÃO: Garante o "rebobinamento" também no fallback
+                file_stream.seek(0)
                 df = pd.read_csv(file_stream, sep=None, engine='python', encoding='latin-1')
         
         if df is None:
              raise ValueError("Não foi possível ler o arquivo. Formato pode ser inválido ou o arquivo está corrompido.")
 
-        clientes_para_inserir = processar_relatorio(df, relatorio_id)
-        
-        if clientes_para_inserir:
-            logger.info(f"Encontrados {len(clientes_para_inserir)} clientes offline para inserir no DB.")
-            insert_res = supabase.table('clientes_off').insert(clientes_para_inserir).execute()
-            if hasattr(insert_res, 'error') and insert_res.error:
-                raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error}")
-        else:
-            logger.info(f"Nenhum cliente com status de desconexão ('LOSS', 'Sem Energia') encontrado no relatório ID: {relatorio_id}.")
+        # --- Lógica de Roteamento ---
+        processor_func = PROCESSORS.get(report_type)
+        if not processor_func:
+            raise ValueError(f"Tipo de relatório desconhecido: '{report_type}'")
+
+        # Chama a função de processamento correta, passando o cliente supabase
+        processor_func(df=df, relatorio_id=relatorio_id, supabase_client=supabase)
+        # ---------------------------
         
         supabase.table('relatorios').update({"status": "COMPLETED"}).eq('id', relatorio_id).execute()
         logger.info(f"Processamento do relatório ID: {relatorio_id} concluído com sucesso.")
@@ -183,7 +188,11 @@ def get_report_status(relatorio_id: int):
         raise HTTPException(status_code=500, detail="Erro ao consultar o estado do relatório.")
 
 @app.post("/upload", response_model=UploadResponse, tags=["Relatórios"], summary="Upload de novo relatório")
-async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_relatorio(
+    background_tasks: BackgroundTasks, 
+    file: UploadFile = File(...),
+    report_type: str = Form("desconexao") # Recebe o tipo de relatório do formulário
+):
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
         raise HTTPException(status_code=400, detail="Formato de arquivo inválido. Use Excel ou CSV.")
     
@@ -191,16 +200,39 @@ async def upload_relatorio(background_tasks: BackgroundTasks, file: UploadFile =
     
     insert_res = supabase.table('relatorios').insert({
         "nome_arquivo": file.filename,
-        "status": "PENDING"
+        "status": "PENDING",
+        "tipo": report_type # Salva o tipo no banco de dados
     }).execute()
 
     if not insert_res.data:
         raise HTTPException(status_code=500, detail="Não foi possível criar o registro do relatório.")
     
     relatorio_id = insert_res.data[0]['id']
-    background_tasks.add_task(processar_arquivo_em_background, relatorio_id, contents, file.filename)
+    background_tasks.add_task(processar_arquivo_em_background, relatorio_id, contents, file.filename, report_type)
     
     return {"message": "Arquivo recebido! O processamento foi iniciado.", "relatorio_id": relatorio_id}
+
+# --- NOVOS ENDPOINTS PARA O MÓDULO SAC ---
+@app.get("/stats/sac/kpis", tags=["Estatísticas SAC"], summary="Busca os KPIs do SAC")
+def get_sac_kpis():
+    try:
+        response = supabase.rpc('get_sac_kpis').execute()
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return {"media_nota_monitoria": 0, "tempo_medio_atendimento_minutos": 0}
+    except Exception as e:
+        logger.error(f"Erro em /stats/sac/kpis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao buscar KPIs do SAC.")
+
+@app.get("/stats/sac/performance-agente", tags=["Estatísticas SAC"], summary="Busca a performance por agente")
+def get_performance_por_agente():
+    try:
+        response = supabase.rpc('get_performance_por_agente').execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Erro em /stats/sac/performance-agente: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Erro ao buscar performance por agente.")
+# --- FIM DOS NOVOS ENDPOINTS ---
 
 @app.get("/stats/kpis", response_model=NewKpiStatsResponse, tags=["Estatísticas"], summary="Busca os KPIs principais")
 def get_main_kpis():
@@ -260,5 +292,4 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
 
