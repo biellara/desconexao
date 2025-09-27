@@ -1,99 +1,112 @@
-# 📌 Roadmap Evolutivo — Checklist do Projeto
+# 📌 Roadmap Evolutivo — Plataforma de Inteligência Operacional
 
 ---
 
-## 🚀 Fase 1: Fundações e MVP Robusto  
-**Objetivo:** Fortalecer a arquitetura atual, garantir a estabilidade e preparar o terreno para futuras funcionalidades.
+## 🚀 Fase 1: Fundação da Plataforma e Unificação da UI/UX
+**Objetivo:** Re-arquitetar a aplicação para suportar múltiplos módulos de dados, implementando uma navegação escalável e um dashboard principal que unifica os KPIs mais críticos.
 
-### Backend (FastAPI)  
-- [x] **Implementar Processamento Assíncrono**  
-- [x] **Melhorar Validação com Pydantic**  
-- [x] **Adicionar Logging Estruturado**  
+### Frontend (React)
+- [ ] **Layout com Menu Lateral:**  
+  Substituir a estrutura de página única por navegação principal fixa.  
+  *💡Melhoria:* usar **React Router v6** + **Tailwind/Chakra** para padronizar design responsivo.  
+- [ ] **Roteamento de Páginas:**  
+  Estruturar URLs dedicadas por módulo (`/dashboard`, `/saude-rede`, `/performance-sac`).  
+  *💡Melhoria:* aplicar **lazy loading** para otimizar performance.  
+- [ ] **Dashboard "Visão Geral":**  
+  Criar uma home executiva que exiba KPIs-chave (Clientes Offline, Nota de Monitoria, Volume de Ligações).  
+  *💡Melhoria:* incluir **filtros dinâmicos** (período, região, equipe).  
+- [ ] **Centralização de Componentes:**  
+  Criar biblioteca de componentes (Gráficos, KPIs, Tabelas).  
+  *💡Melhoria:* documentar no **Storybook** para padronizar e facilitar reuso.
 
-### Frontend (React)  
-- [x] **Refatorar e Componentizar a UI**  
-- [x] **Melhorar Feedback ao Usuário**  
-
----
-
-## 📊 Fase 2: Melhoria da Experiência do Usuário (UX) e Análise de Dados  
-**Objetivo:** Transformar o dashboard em uma ferramenta de trabalho mais interativa, informativa e agradável de usar.
-
-### Tabela de Clientes Interativa  
-- [x] **Implementar Paginação**  
-- [x] **Adicionar Ordenação**  
-- [x] **Criar Filtros e Busca em Tempo Real**  
-
-### Visualização de Dados  
-- [x] **Criar Endpoints de Agregação no Backend**  
-- [x] **Integrar Gráficos no Frontend**  
-  - [x] Conectar os componentes `ClientsByRegionChart.jsx` e `OfflineHistoryChart.jsx`.  
-  - [x] Substituir gráfico de **Clientes por Cidade** por **gráfico de barras horizontais** para melhor legibilidade.  
-  - [x] Aumentar a área dos gráficos (`col-span-4` + altura fixa) para maior destaque.  
-  - [x] Adicionar **tooltip com variação percentual** no histórico.  
-
-### Design e Usabilidade  
-- [x] **Paleta de Cores Consistente**  
-  - [x] Definir 3 cores oficiais: primária (ex: azul), secundária (cinza neutro) e de alerta (vermelho).  
-- [x] **Badges Coloridas para Status**  
-  - [x] Verde = <24h offline, Amarelo = 24–48h, Vermelho = >48h.  
-- [x] **Indicador de Paginação na Tabela**  
-  - [x] Exibir “Exibindo 1–10 de X clientes” abaixo da tabela.  
-- [x] **KPIs no Topo**  
-  - [x] Total de clientes offline (já existe).  
-  - [x] % da base offline.  
-  - [x] Cidade com mais clientes offline.  
-  - [x] Tempo médio desconectado.  
-- [x] **Dark Mode (opcional)**  
-  - [x] Implementar toggle de tema para ambientes de operação (NOC).  
-- [x] **Exportação Rápida**  
-  - [x] Botão para exportar dados em CSV/Excel diretamente do dashboard.  
-
-### Integração com ERP  
-- [ ] **Adicionar Ação na Tabela**  
-  - [ ] Incluir uma coluna "Ações" na `ClientTable` com um botão/link "Abrir Atendimento" para cada cliente.  
-
-- [ ] **Implementar Redirecionamento Dinâmico**  
-  - [ ] Configurar o botão para construir a URL do ERP com base em um identificador do cliente (ex: serial da ONU) e abrir em uma nova aba.  
+### Backend (FastAPI)
+- [ ] **Refatorar Endpoint de Upload:**  
+  Criar `/upload` genérico que aceita parâmetro de tipo (Desconexão, Monitoria, Retenção).  
+- [ ] **Estruturar Módulos de Processamento:**  
+  Processadores específicos: `processador_desconexao.py`, `processador_monitoria.py`.  
+  *💡Melhoria:* usar **Celery ou RQ** para filas assíncronas, evitando travar o backend.  
+- [ ] **Expandir Modelo de Dados (Supabase):**  
+  Criar tabelas para SAC, Canais e Retenção.  
+  *💡Melhoria:* aplicar **migrations com Alembic** para versionamento do schema.
 
 ---
 
-## 🤖 Fase 3: Automação e Proatividade  
-**Objetivo:** Eliminar a necessidade de intervenção manual, transformando o sistema em uma ferramenta de monitoramento proativo.
+## 📊 Fase 2: Módulo de Saúde da Rede (Avançado)
+**Objetivo:** Expandir o monitoramento além das desconexões, criando visão 360° da qualidade da conexão.
 
-### Automação da Coleta  
-- [ ] **Desenvolver Script "Robô" de Coleta**  
-  - [ ] Criar um script em Python (usando `Selenium` ou `Playwright`) para automatizar o login no OLT Cloud e o download do relatório.  
+### Frontend
+- [ ] **Seção "Saúde da Rede":**  
+  Nova categoria no menu.  
+- [ ] **Página "Clientes Críticos":**  
+  Migrar clientes offline para esta página.  
+- [ ] **Página "Recorrência e Instabilidade":**  
+  Gráficos + tabelas com dados de `Conexao.csv` e `Recorrencia.csv`.  
+  *💡Melhoria:* incluir **heatmaps** para identificar regiões críticas.  
+- [ ] **Página "Qualidade de Sinal":**  
+  Identificar clientes com atenuação via `Sinal.csv`.  
+  *💡Melhoria:* adicionar **ícones de severidade** (verde, amarelo, vermelho).  
+- [ ] **Integração com ERP:**  
+  Botão "Abrir Atendimento" com redirecionamento automático.
 
-- [ ] **Criar Endpoint para Ingestão Automática**  
-  - [ ] Desenvolver uma rota segura no backend (ex: `/upload/automatico`) que será chamada pelo robô.  
-
-- [ ] **Agendar a Execução (Cron Job)**  
-  - [ ] Configurar um agendador na plataforma de hospedagem (ex: Render Cron Jobs) para executar o script de coleta em intervalos regulares (ex: a cada 4 horas).  
-
-### Inteligência de Dados  
-- [ ] **Implementar Lógica de Desduplicação**  
-  - [ ] No `file_processor.py`, antes de inserir um cliente, verificar se um registro ativo para o mesmo `serial_onu` já existe para evitar duplicatas.  
-  - [ ] Adicionar um campo `status` (`ATIVO`, `RESOLVIDO`) à tabela `clientes_off` para gerenciar o ciclo de vida do problema.  
-
-- [ ] **Criar Sistema de Alertas Automáticos**  
-  - [ ] Após um processamento automático bem-sucedido, se novos clientes críticos forem identificados, disparar uma notificação.  
-  - [ ] Escolher e implementar um canal de alerta (E-mail, Telegram, ou um webhook para MS Teams/Slack).  
+### Backend
+- [ ] **Endpoints de Agregação:**  
+  Criar APIs para Recorrência e Qualidade de Sinal.  
+- [ ] **Lógica de Desduplicação e Status:**  
+  - Verificar se já existe problema aberto para o cliente.  
+  - Status: `ATIVO`, `EM ATENDIMENTO`, `RESOLVIDO`.  
+  *💡Melhoria:* implementar **websockets** para atualização em tempo real.
 
 ---
 
-### Segurança e Controle  
-- [ ] **Implementar Autenticação de Usuários**  
-  - [ ] Utilizar o `Supabase Auth` para criar um sistema de login seguro.  
-  - [ ] Proteger as rotas da API e as páginas do frontend para permitir o acesso apenas a usuários autenticados.  
+## 🤖 Fase 3: Módulo de Performance do SAC e Automação
+**Objetivo:** Medir produtividade/qualidade da equipe e iniciar automação de coleta de dados.
 
-- [ ] **Adicionar Gerenciamento de Status**  
-  - [ ] Permitir que usuários marquem um cliente como "Resolvido" ou "Em Atendimento" diretamente pela interface.  
+### Frontend
+- [ ] **Seção "Performance do SAC":**  
+  Nova entrada no menu.  
+- [ ] **Página "Visão Geral da Equipe":**  
+  Dashboards baseados em `FEEDBACK.csv`.  
+- [ ] **Página "Ranking de Agentes":**  
+  Ranking dinâmico de premiação via `PROJETO_DE_PREMIACAO_SAC.csv`.  
+- [ ] **Página "Monitoria de Qualidade":**  
+  Notas por agente/equipe.  
+  *💡Melhoria:* destacar **top 5 positivos/negativos**.
 
-### Inteligência de Dados  
-- [ ] **Dashboard de Histórico Avançado**  
-  - [ ] Criar uma nova página dedicada a análises históricas, como tempo médio para resolução, OLTs com maior reincidência, etc.  
+### Backend & Automação
+- [ ] **Endpoints SAC:**  
+  APIs para performance, ranking e monitoria.  
+- [ ] **Script Robô de Coleta:**  
+  Automatizar login no OLT Cloud + download de relatórios (Selenium/Playwright).  
+- [ ] **Agendamento:**  
+  Cron Job (Render, GitHub Actions ou Supabase Edge Functions).  
+  *💡Melhoria:* armazenar históricos em **S3/MinIO** para backup.
 
-### DevOps  
-- [ ] **Configurar CI/CD (Integração e Deploy Contínuos)**  
-  - [ ] Criar um workflow (ex: GitHub Actions) para automatizar testes e o deploy do backend e frontend sempre que houver atualizações na branch principal. 
+---
+
+## 🔒 Fase 4: Inteligência, Alertas e Segurança
+**Objetivo:** Tornar a plataforma proativa com alertas automáticos e garantir segurança de acesso.
+
+### Funcionalidades
+- [ ] **Sistema de Alertas Automáticos:**  
+  - Detectar novos clientes críticos.  
+  - Notificação por **E-mail** ou **Webhook** (MS Teams/Slack).  
+  *💡Melhoria:* incluir **limiares configuráveis** (ex: só alertar >10 clientes críticos).  
+- [ ] **Autenticação de Usuários:**  
+  - Usar **Supabase Auth** com login seguro.  
+  - Proteger rotas API e frontend.  
+  *💡Melhoria:* adicionar **roles** (Admin, Operador, Visualizador).  
+- [ ] **Gerenciamento de Status na UI:**  
+  Alterar status dos clientes pela interface.
+
+### DevOps
+- [ ] **CI/CD:**  
+  Pipeline com **GitHub Actions** para rodar testes e deploy automático (frontend + backend).  
+  *💡Melhoria:* adicionar **testes e2e com Cypress** para validar fluxo completo.
+
+---
+
+## 🌟 Melhorias Extras (Cross-Fase)
+- 📈 **Observabilidade:** usar **Prometheus + Grafana** ou **Sentry** para logs, métricas e erros.  
+- ⚡ **Performance:** aplicar **caching com Redis** para APIs mais acessadas.  
+- 📚 **Documentação:** manter wiki no GitHub ou Notion com tutoriais + decisões técnicas.  
+- 👥 **Colaboração:** criar **board no Trello/Linear/Jira** para acompanhar as fases.  
