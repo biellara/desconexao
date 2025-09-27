@@ -12,16 +12,16 @@ import {
   fetchOfflineHistoryStats,
   fetchReportStatus,
   findErpClient,
-} from "../services/api.js";
-import KpiCard from "../components/KpiCard.jsx";
-import UploadCard from "../components/UploadCard.jsx";
-import ClientTable from "../components/ClientTable.jsx";
-import Modal from "../components/Modal.jsx";
-import ChartContainer from "../components/ChartContainer.jsx";
-import ClientsByCityChart from "../components/ClientsByCityChart.jsx";
-import OfflineHistoryChart from "../components/OfflineHistoryChart.jsx";
-import Header from "../components/Header.jsx";
-import useDebounce from "../hooks/useDebounce.js";
+} from "../services/api";
+import KpiCard from "../components/KpiCard";
+import UploadCard from "../components/UploadCard";
+import ClientTable from "../components/ClientTable";
+import Modal from "../components/Modal";
+import ChartContainer from "../components/ChartContainer";
+import ClientsByCityChart from "../components/ClientsByCityChart";
+import OfflineHistoryChart from "../components/OfflineHistoryChart";
+import Header from "../components/Header";
+import useDebounce from "../hooks/useDebounce";
 import {
   UsersIcon,
   TrashIcon,
@@ -34,18 +34,19 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   SpinnerIcon,
-} from "../components/Icons.jsx";
+  ClockIcon,
+} from "../components/Icons";
 
 const exportToCSV = (clients) => {
   const headers =
-    "Nome Cliente,Serial ONU,OLT/Região,Cidade,Horas Offline,Data Desconexão";
+    "Nome Cliente,Serial ONU,OLT/Região,CTO,Cidade,Horas Offline,Data Desconexão,Motivo,RX ONU,RX OLT,Distância (m)";
   const rows = clients.map(
     (c) =>
-      `"${c.nome_cliente || ""}","${c.serial_onu}","${c.olt_regiao || ""}","${
+      `"${c.nome_cliente || ""}","${c.serial_onu}","${c.olt_regiao || ""}","${c.cto || ""}","${
         c.cidade || ""
       }",${c.horas_offline},"${new Date(c.data_desconexao).toLocaleString(
         "pt-BR"
-      )}"`
+      )}","${c.motivo_desconexao || ""}","${c.rx_onu || ""}","${c.rx_olt || ""}","${c.distancia_m || ""}"`
   );
   const csvContent =
     "data:text/csv;charset=utf-8," +
@@ -123,7 +124,9 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [regionFilter, setRegionFilter] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [hoursFilter, setHoursFilter] = useState(48);
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
+  const debouncedHoursFilter = useDebounce(hoursFilter, 500);
   const [sortConfig, setSortConfig] = useState({
     key: "horas_offline",
     direction: "desc",
@@ -165,6 +168,7 @@ export default function DashboardPage() {
         regionFilter,
         sortKey: sortConfig.key,
         sortDirection: sortConfig.direction,
+        hoursFilter: debouncedHoursFilter,
       });
       if (error) throw new Error(error.message);
       setClients(data || []);
@@ -181,6 +185,7 @@ export default function DashboardPage() {
     debouncedSearchTerm,
     regionFilter,
     sortConfig,
+    debouncedHoursFilter,
   ]);
 
   const loadDashboardData = useCallback(async () => {
@@ -211,7 +216,7 @@ export default function DashboardPage() {
   }, []);
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, regionFilter, itemsPerPage]);
+  }, [debouncedSearchTerm, regionFilter, itemsPerPage, debouncedHoursFilter]);
 
   const refreshAllData = useCallback(() => {
     loadClients();
@@ -316,12 +321,8 @@ export default function DashboardPage() {
   };
 
   const handleAbrirAtendimento = async (clientName) => {
-    console.log(
-      `[DashboardPage] Tentando abrir atendimento para: "${clientName}"`
-    );
     if (!clientName) {
       showErrorToast("Nome do cliente inválido.");
-      console.error("[DashboardPage] Nome do cliente é nulo ou indefinido.");
       return;
     }
 
@@ -329,33 +330,22 @@ export default function DashboardPage() {
     showLoadingToast(`Buscando ${clientName} no ERP...`, { id: toastId });
 
     try {
-      // 1. Chama o backend para obter o ID do cliente
       const erpClient = await findErpClient(clientName);
-      console.log("[DashboardPage] Resposta da API recebida:", erpClient);
       const { client_id } = erpClient;
 
-      // 2. Constrói a URL final usando a variável de ambiente
       const erpUrlPattern = import.meta.env.VITE_ERP_CLIENT_URL_PATTERN;
       if (!erpUrlPattern) {
-        console.error(
-          "[DashboardPage] VITE_ERP_CLIENT_URL_PATTERN não está configurada no .env"
-        );
         throw new Error("URL do ERP não configurada no frontend.");
       }
 
       const finalUrl = `${erpUrlPattern}${client_id}`;
-      console.log(`[DashboardPage] URL final construída: ${finalUrl}`);
-
       toast.success(`Cliente encontrado! Redirecionando...`, { id: toastId });
-
-      // 3. Abre a URL em uma nova aba
       window.open(finalUrl, "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.dismiss(toastId);
       const errorMessage =
         error.response?.data?.detail ||
         "Não foi possível encontrar o cliente no ERP.";
-      console.error("[DashboardPage] Erro ao buscar cliente no ERP:", error);
       showErrorToast(errorMessage, { id: toastId });
     }
   };
@@ -377,36 +367,26 @@ export default function DashboardPage() {
           <main className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <KpiCard
-                title="Total de Clientes Críticos"
+                title="Total de Clientes Offline"
                 value={isStatsLoading ? "..." : totalCount}
                 icon={<UsersIcon />}
                 isLoading={isStatsLoading}
               />
               <KpiCard
                 title="Novos Casos (24h)"
-                value={
-                  isStatsLoading
-                    ? "..."
-                    : kpiStats.new_critical_cases_24h ?? "0"
-                }
+                value={isStatsLoading ? "..." : kpiStats.new_critical_cases_24h ?? "0"}
                 icon={<UserPlusIcon />}
                 isLoading={isStatsLoading}
               />
               <KpiCard
                 title="OLT Mais Crítica"
-                value={
-                  isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"
-                }
+                value={isStatsLoading ? "..." : kpiStats.most_critical_olt || "N/A"}
                 icon={<ServerIcon />}
                 isLoading={isStatsLoading}
               />
               <KpiCard
                 title="Caso Mais Antigo"
-                value={
-                  isStatsLoading
-                    ? "..."
-                    : `${kpiStats.oldest_case_days || 0} dias`
-                }
+                value={isStatsLoading ? "..." : `${kpiStats.oldest_case_days || 0} dias`}
                 icon={<CalendarIcon />}
                 isLoading={isStatsLoading}
               />
@@ -415,25 +395,13 @@ export default function DashboardPage() {
               <UploadCard onUpload={handleUpload} isLoading={isUploading} />
             </div>
             <div className="lg:col-span-4">
-              <ChartContainer
-                title="Histórico de Novos Clientes Offline"
-                isLoading={isStatsLoading}
-              >
-                <OfflineHistoryChart
-                  chartData={offlineHistoryData}
-                  theme={theme}
-                />
+              <ChartContainer title="Histórico de Novos Clientes Offline" isLoading={isStatsLoading}>
+                <OfflineHistoryChart chartData={offlineHistoryData} theme={theme} />
               </ChartContainer>
             </div>
             <div className="lg:col-span-4">
-              <ChartContainer
-                title="Clientes Offline por Cidade"
-                isLoading={isStatsLoading}
-              >
-                <ClientsByCityChart
-                  chartData={clientsByCityData}
-                  theme={theme}
-                />
+              <ChartContainer title="Clientes Offline por Cidade" isLoading={isStatsLoading}>
+                <ClientsByCityChart chartData={clientsByCityData} theme={theme} />
               </ChartContainer>
             </div>
             <div className="lg:col-span-4 bg-card text-card-foreground p-6 rounded-2xl shadow-lg">
@@ -450,17 +418,24 @@ export default function DashboardPage() {
                       className="pl-10 pr-4 py-2 w-full sm:w-64 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
                     />
                   </div>
+                  <div className="relative w-full sm:w-auto">
+                    <ClockIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-secondary" />
+                    <input
+                      type="number"
+                      placeholder="Horas mín."
+                      value={hoursFilter}
+                      onChange={(e) => setHoursFilter(Number(e.target.value))}
+                      className="pl-10 pr-4 py-2 w-full sm:w-40 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
+                      title="Filtrar por horas mínimas offline"
+                    />
+                  </div>
                   <select
                     value={regionFilter}
                     onChange={(e) => setRegionFilter(e.target.value)}
                     className="w-full sm:w-auto px-4 py-2.5 bg-background border-secondary/30 border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
                   >
                     <option value="">Todas as Regiões</option>
-                    {uniqueRegions.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
+                    {uniqueRegions.map((r) => (<option key={r} value={r}>{r}</option>))}
                   </select>
                   <select
                     value={itemsPerPage}
@@ -483,27 +458,14 @@ export default function DashboardPage() {
                   <DownloadIcon className="h-4 w-4" /> Exportar CSV
                 </button>
                 <button
-                  onClick={() =>
-                    openDeleteModal(
-                      () => deleteSelectedClients(selectedIds),
-                      "Excluir Selecionados",
-                      `Deseja excluir ${selectedIds.length} cliente(s)?`
-                    )
-                  }
+                  onClick={() => openDeleteModal(() => deleteSelectedClients(selectedIds), "Excluir Selecionados", `Deseja excluir ${selectedIds.length} cliente(s)?`)}
                   disabled={selectedIds.length === 0}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-yellow-500 rounded-lg shadow-md hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
-                  <TrashIcon className="h-4 w-4" /> Excluir (
-                  {selectedIds.length})
+                  <TrashIcon className="h-4 w-4" /> Excluir ({selectedIds.length})
                 </button>
                 <button
-                  onClick={() =>
-                    openDeleteModal(
-                      deleteAllClients,
-                      "Excluir Todos",
-                      "Deseja excluir TODOS os clientes?"
-                    )
-                  }
+                  onClick={() => openDeleteModal(deleteAllClients, "Excluir Todos", "Deseja excluir TODOS os clientes?")}
                   disabled={totalCount === 0}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-alert rounded-lg shadow-md hover:bg-alert-dark disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                 >
@@ -514,18 +476,8 @@ export default function DashboardPage() {
                 clients={clients}
                 isLoading={isLoading}
                 selectedIds={selectedIds}
-                onSelectClient={(id) =>
-                  setSelectedIds((p) =>
-                    p.includes(id) ? p.filter((i) => i !== id) : [...p, id]
-                  )
-                }
-                onSelectAllClients={() =>
-                  setSelectedIds(
-                    selectedIds.length === clients.length
-                      ? []
-                      : clients.map((c) => c.id)
-                  )
-                }
+                onSelectClient={(id) => setSelectedIds((p) => p.includes(id) ? p.filter((i) => i !== id) : [...p, id])}
+                onSelectAllClients={() => setSelectedIds(selectedIds.length === clients.length ? [] : clients.map((c) => c.id))}
                 sortConfig={sortConfig}
                 onSort={handleSort}
                 currentPage={currentPage}
@@ -542,3 +494,4 @@ export default function DashboardPage() {
     </>
   );
 }
+

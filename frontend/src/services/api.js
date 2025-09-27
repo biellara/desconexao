@@ -26,7 +26,8 @@ apiClient.interceptors.response.use(
 export const fetchClients = async (params = {}) => {
   const { 
     page = 1, limit = 10, searchTerm = '', regionFilter = '', 
-    sortKey = 'horas_offline', sortDirection = 'desc' 
+    sortKey = 'horas_offline', sortDirection = 'desc',
+    hoursFilter = 0
   } = params;
 
   let query = supabase.from('clientes_off').select('*', { count: 'exact' });
@@ -39,6 +40,11 @@ export const fetchClients = async (params = {}) => {
   }
   if (sortKey && sortDirection) {
     query = query.order(sortKey, { ascending: sortDirection === 'asc' });
+  }
+
+  // Novo filtro de horas
+  if (hoursFilter > 0) {
+    query = query.gte('horas_offline', hoursFilter);
   }
 
   const from = (page - 1) * limit;
@@ -104,4 +110,3 @@ export const findErpClient = async (clientName) => {
     console.log("[api.js] Resposta do backend recebida:", response.data);
     return response.data;
 };
-

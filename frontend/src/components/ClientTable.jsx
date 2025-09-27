@@ -56,14 +56,13 @@ export default function ClientTable({
     if (totalItems === 0 && !isLoading) {
       return (
         <div className="text-center text-secondary py-16">
-          Nenhum cliente offline encontrado.
+          Nenhum cliente offline encontrado com os filtros aplicados.
         </div>
       );
     }
 
     return (
       <div className="relative overflow-x-auto">
-        {/* Overlay de Carregamento */}
         {isLoading && (
           <div className="absolute inset-0 bg-card/70 dark:bg-card/50 backdrop-blur-sm flex items-center justify-center z-10">
             <SpinnerIcon className="h-10 w-10 text-primary" />
@@ -82,58 +81,24 @@ export default function ClientTable({
                   onChange={onSelectAllClients}
                 />
               </th>
-              <SortableHeader
-                sortKey="nome_cliente"
-                sortConfig={sortConfig}
-                onSort={onSort}
-              >
-                Nome Cliente
-              </SortableHeader>
-              <SortableHeader
-                sortKey="serial_onu"
-                sortConfig={sortConfig}
-                onSort={onSort}
-              >
-                Serial ONU
-              </SortableHeader>
-              <SortableHeader
-                sortKey="olt_regiao"
-                sortConfig={sortConfig}
-                onSort={onSort}
-              >
-                OLT/Região
-              </SortableHeader>
-              <SortableHeader
-                sortKey="horas_offline"
-                sortConfig={sortConfig}
-                onSort={onSort}
-              >
-                Horas Offline
-              </SortableHeader>
-              <SortableHeader
-                sortKey="data_desconexao"
-                sortConfig={sortConfig}
-                onSort={onSort}
-              >
-                Desconectado há
-              </SortableHeader>
-              <th scope="col" className="px-6 py-4 text-center">
-                Ações
-              </th>
+              <SortableHeader sortKey="nome_cliente" sortConfig={sortConfig} onSort={onSort}>Nome Cliente</SortableHeader>
+              <SortableHeader sortKey="serial_onu" sortConfig={sortConfig} onSort={onSort}>Serial ONU</SortableHeader>
+              <SortableHeader sortKey="olt_regiao" sortConfig={sortConfig} onSort={onSort}>OLT/Região</SortableHeader>
+              <SortableHeader sortKey="cto" sortConfig={sortConfig} onSort={onSort}>CTO</SortableHeader>
+              <SortableHeader sortKey="motivo_desconexao" sortConfig={sortConfig} onSort={onSort}>Motivo</SortableHeader>
+              <SortableHeader sortKey="rx_onu" sortConfig={sortConfig} onSort={onSort}>RX ONU</SortableHeader>
+              <SortableHeader sortKey="rx_olt" sortConfig={sortConfig} onSort={onSort}>RX OLT</SortableHeader>
+              <SortableHeader sortKey="horas_offline" sortConfig={sortConfig} onSort={onSort}>Horas Offline</SortableHeader>
+              <SortableHeader sortKey="data_desconexao" sortConfig={sortConfig} onSort={onSort}>Desconectado há</SortableHeader>
+              <th scope="col" className="px-6 py-4 text-center">Ações</th>
             </tr>
           </thead>
-          <tbody
-            className={`divide-y divide-secondary-light dark:divide-secondary-dark/30 ${
-              isLoading ? "opacity-50" : ""
-            }`}
-          >
+          <tbody className={`divide-y divide-secondary-light dark:divide-secondary-dark/30 ${isLoading ? "opacity-50" : ""}`}>
             {clients.map((client) => (
               <tr
                 key={client.id}
                 className={`hover:bg-secondary-light dark:hover:bg-secondary-dark/50 transition-colors ${
-                  selectedIds.includes(client.id)
-                    ? "bg-primary-light dark:bg-primary-dark/20"
-                    : ""
+                  selectedIds.includes(client.id) ? "bg-primary-light dark:bg-primary-dark/20" : ""
                 }`}
               >
                 <td className="w-4 p-4">
@@ -144,41 +109,29 @@ export default function ClientTable({
                     onChange={() => onSelectClient(client.id)}
                   />
                 </td>
-                <td className="px-6 py-4 font-medium">
-                  {client.nome_cliente || "N/A"}
-                </td>
-                <td className="px-6 py-4 font-mono text-secondary">
-                  {client.serial_onu}
-                </td>
+                <td className="px-6 py-4 font-medium">{client.nome_cliente || "N/A"}</td>
+                <td className="px-6 py-4 font-mono text-secondary">{client.serial_onu}</td>
                 <td className="px-6 py-4">{client.olt_regiao || "N/A"}</td>
+                <td className="px-6 py-4">{client.cto || "N/A"}</td>
+                <td className="px-6 py-4">{client.motivo_desconexao || "N/A"}</td>
+                <td className="px-6 py-4">{client.rx_onu || "N/A"}</td>
+                <td className="px-6 py-4">{client.rx_olt || "N/A"}</td>
                 <td className="px-6 py-4">
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${getBadgeColor(
-                      client.horas_offline
-                    )}`}
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${getBadgeColor(client.horas_offline)}`}
                   >
                     {client.horas_offline}h
                   </span>
                 </td>
                 <td
                   className="px-6 py-4 text-secondary"
-                  title={format(
-                    new Date(client.data_desconexao),
-                    "dd/MM/yyyy 'às' HH:mm",
-                    { locale: ptBR }
-                  )}
+                  title={format(new Date(client.data_desconexao), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                 >
-                  {formatDistanceToNow(new Date(client.data_desconexao), {
-                    addSuffix: true,
-                    locale: ptBR,
-                  })}
+                  {formatDistanceToNow(new Date(client.data_desconexao), { addSuffix: true, locale: ptBR })}
                 </td>
                 <td className="px-6 py-4 text-center">
                   <button
-                    onClick={() => {
-                      console.log(`[ClientTable] Botão 'Abrir Atendimento' clicado para: "${client.nome_cliente}"`);
-                      onAbrirAtendimento(client.nome_cliente);
-                    }}
+                    onClick={() => onAbrirAtendimento(client.nome_cliente)}
                     title={`Abrir atendimento para ${client.nome_cliente}`}
                     className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary-dark transition-colors shadow focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-dark disabled:bg-gray-400 disabled:cursor-not-allowed"
                     disabled={isLoading}
@@ -224,5 +177,3 @@ export default function ClientTable({
     </>
   );
 }
-
-

@@ -128,26 +128,28 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
     try:
         supabase.table('relatorios').update({"status": "PROCESSING"}).eq('id', relatorio_id).execute()
         
-        df = pd.read_excel(io.BytesIO(contents)) if filename.endswith(('.xlsx', '.xls')) else pd.read_csv(
-            io.BytesIO(contents), sep=None, engine='python', encoding='latin-1'
-        )
-        
-        df.columns = (
-            df.columns.str.strip().str.lower()
-            .str.replace(" ", "_").str.replace("á", "a").str.replace("ã", "a")
-            .str.replace("â", "a").str.replace("é", "e").str.replace("ê", "e")
-            .str.replace("í", "i").str.replace("ó", "o").str.replace("ô", "o")
-            .str.replace("õ", "o").str.replace("ú", "u").str.replace("ç", "c")
-        )
+        df = None
+        file_stream = io.BytesIO(contents) # Cria um stream único para o arquivo
 
-        required = ["status"]
-        alternatives = ["ultima_comunicacao", "ultima_alteracao_de_status"]
-
-        if not all(col in df.columns for col in required):
-            raise Exception("Coluna obrigatória 'Status' não encontrada no arquivo.")
-        if not any(col in df.columns for col in alternatives):
-            raise Exception("Nenhuma coluna de data encontrada ('Ultima Comunicacao' ou 'Última Alteração de Status').")
+        if filename.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file_stream)
+        elif filename.endswith('.csv'):
+            try:
+                # Tenta ler com UTF-8-SIG e vírgula como separador
+                df = pd.read_csv(file_stream, sep=',', engine='python', encoding='utf-8-sig')
+                # Se todas as colunas foram para uma só, tenta o ponto e vírgula
+                if df.shape[1] == 1:
+                    logger.warning("CSV lido com uma única coluna usando vírgula. Tentando com ponto e vírgula.")
+                    file_stream.seek(0) # <--- CORREÇÃO: "Rebobina" o arquivo para o início
+                    df = pd.read_csv(file_stream, sep=';', engine='python', encoding='utf-8-sig')
+            except Exception as e:
+                logger.warning(f"Falha ao ler CSV com UTF-8. Tentando com latin-1. Erro: {e}")
+                file_stream.seek(0) # <--- CORREÇÃO: Garante o "rebobinamento" também no fallback
+                df = pd.read_csv(file_stream, sep=None, engine='python', encoding='latin-1')
         
+        if df is None:
+             raise ValueError("Não foi possível ler o arquivo. Formato pode ser inválido ou o arquivo está corrompido.")
+
         clientes_para_inserir = processar_relatorio(df, relatorio_id)
         
         if clientes_para_inserir:
@@ -156,7 +158,7 @@ def processar_arquivo_em_background(relatorio_id: int, contents: bytes, filename
             if hasattr(insert_res, 'error') and insert_res.error:
                 raise Exception(f"Falha ao salvar clientes no banco de dados: {insert_res.error}")
         else:
-            logger.info(f"Nenhum cliente com status 'LOSS' encontrado no relatório ID: {relatorio_id}.")
+            logger.info(f"Nenhum cliente com status de desconexão ('LOSS', 'Sem Energia') encontrado no relatório ID: {relatorio_id}.")
         
         supabase.table('relatorios').update({"status": "COMPLETED"}).eq('id', relatorio_id).execute()
         logger.info(f"Processamento do relatório ID: {relatorio_id} concluído com sucesso.")
@@ -258,4 +260,5 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
 
