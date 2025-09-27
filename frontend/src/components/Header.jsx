@@ -2,16 +2,9 @@ import React from 'react';
 import { MoonIcon, SunIcon } from './Icons';
 
 export default function Header({ theme, onThemeToggle }) {
+  // O título agora será gerenciado pela própria página para maior flexibilidade
   return (
-    <header className="flex justify-between items-center">
-      <div>
-        <h1 className="text-3xl sm:text-4xl font-bold">
-          Dashboard de Clientes Offline
-        </h1>
-        <p className="text-secondary mt-1">
-          Monitoramento de desconexões na rede.
-        </p>
-      </div>
+    <div className="flex justify-end items-center mb-6">
       <button
         onClick={onThemeToggle}
         className="p-2 rounded-full hover:bg-secondary-light dark:hover:bg-secondary-dark/30 transition-colors"
@@ -23,6 +16,6 @@ export default function Header({ theme, onThemeToggle }) {
           <SunIcon className="h-6 w-6" />
         )}
       </button>
-    </header>
+    </div>
   );
 }

@@ -1,13 +1,48 @@
-import React from 'react';
-import DashboardPage from './pages/DashboardPage';
+import React, { Suspense, lazy } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import MainLayout from './layouts/MainLayout';
+import { SpinnerIcon } from './components/Icons';
 
-// O App.jsx agora serve apenas como o ponto de entrada principal
-// para a renderização das páginas da aplicação.
+// Lazy loading das páginas para otimizar o carregamento inicial
+const DashboardVisaoGeral = lazy(() => import('./pages/DashboardVisaoGeral'));
+const ClientesCriticosPage = lazy(() => import('./pages/ClientesCriticosPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+
+// Placeholder para futuras páginas
+const SacPerformancePage = () => <div className="p-8">Página de Performance do SAC em construção...</div>;
+
 function App() {
   return (
-    <DashboardPage />
+    <Routes>
+      <Route path="/" element={<MainLayout />}>
+        <Route index element={<DashboardVisaoGeral />} />
+        <Route path="dashboard" element={<DashboardVisaoGeral />} />
+        
+        {/* Módulo de Saúde da Rede */}
+        <Route 
+          path="saude-rede/clientes-criticos" 
+          element={
+            <Suspense fallback={<div className="flex justify-center items-center h-full"><SpinnerIcon className="h-10 w-10 text-primary" /></div>}>
+              <ClientesCriticosPage />
+            </Suspense>
+          } 
+        />
+        
+        {/* Módulo de Performance do SAC */}
+        <Route 
+          path="performance-sac" 
+          element={
+            <Suspense fallback={<div className="flex justify-center items-center h-full"><SpinnerIcon className="h-10 w-10 text-primary" /></div>}>
+              <SacPerformancePage />
+            </Suspense>
+          } 
+        />
+
+        {/* Rota para página não encontrada */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   );
 }
 
 export default App;
-
